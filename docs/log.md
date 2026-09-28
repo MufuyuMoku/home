@@ -285,3 +285,11 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Diagnosis (hanya membaca):** `[migrations]` tidak ada di `app.ini`, dan tidak ada env `GITEA__migrations__*`, sehingga Gitea memakai aturan bawaan (hanya host "eksternal"). DNS STB = `192.168.137.1` (Windows ICS, diteruskan dari hotspot). Dari STB **dan** dari dalam container, `github.com` → `20.205.243.166` **dan** `64:ff9b::14cd:f3a6` (prefiks **NAT64** 64:ff9b::/96 dari DNS64 hotspot). Pola sama untuk `api.`/`codeload.github.com`/`objects.githubusercontent.com`. STB tidak punya rute IPv6 (hanya link-local), jadi koneksi nyata lewat IPv4: `curl https://github.com` → 200 dari STB, `wget` dari container → OK, ping 1.1.1.1 OK. **Internet dan DNS berfungsi.** Kemungkinan penyebab: Gitea memeriksa setiap alamat hasil DNS, dan alamat NAT64 tidak lolos aturan "eksternal" bawaan. Konfigurasi jaringan STB **tidak diubah**.
 - **Perbaikan (disetujui konsultan):** `services/gitea/compose.yaml` ditambah `GITEA__migrations__ALLOWED_DOMAINS: "github.com,*.github.com"` dan `GITEA__migrations__ALLOW_LOCALNETWORKS: "false"`. Backup `app.ini` sebelumnya: `/root/fase0/backup/gitea-app.ini.<timestamp>`. `docker compose up -d` (container dibuat ulang, data tetap).
 - **Verifikasi:** `running`, restart 0, HTTP 200. Env container dan `app.ini` `[migrations]` → `ALLOWED_DOMAINS = github.com,*.github.com`, `ALLOW_LOCALNETWORKS = false`. `INSTALL_LOCK = true` (instalasi/akun klien tetap).
+- **Tes klien:** migrasi berhasil, mirror `MufuyuMoku/home` berjalan di Gitea.
+
+## 2026-09-28: Repo di-push ke GitHub + aturan push
+
+- **Temuan klien:** mirror Gitea hanya berisi 1 commit, karena semua commit proyek belum pernah di-push ke GitHub.
+- **Pemeriksaan sebelum push:** `git status` bersih. Identitas lokal MufuyuMoku `264320223+MufuyuMoku@users.noreply.github.com`, dan seluruh 27 commit (author + committer) memakai identitas itu. Remote `origin` = `https://github.com/MufuyuMoku/home.git`. Tidak ada file `.env`/key/token di riwayat commit.
+- **Push:** `git push origin main` → `62a45a7..d9b8c31`, **26 commit ter-push**. `origin/main` = 27 commit, sejajar dengan `main`.
+- **Aturan baru di CLAUDE.md ("Cara kerja"):** setiap selesai satu langkah/checkpoint yang dilaporkan ke klien: commit lalu push ke GitHub. Repo yang hanya ada di laptop tidak dianggap tersimpan.

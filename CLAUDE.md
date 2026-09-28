@@ -78,6 +78,7 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
   services/<nama>/.env.example
   ```
 - Setiap perubahan di STB harus punya padanannya di repo **dan** satu entri di `docs/log.md`. Commit kecil-kecil dengan pesan yang jelas.
+- **Setiap selesai satu langkah atau checkpoint yang dilaporkan ke klien: commit, lalu `git push origin main` ke GitHub** (`MufuyuMoku/home`). Repo yang hanya ada di laptop **tidak** dianggap tersimpan. Sebelum push: `git status` bersih, identitas commit MufuyuMoku (noreply), dan tidak ada `.env`/key/token di commit. Laporkan ke klien bahwa push berhasil (`main...origin/main` sejajar).
 - Data layanan disimpan di microSD: `/mnt/data/<nama-layanan>/`.
 - Git identity: sebelum commit pertama, pastikan `git config user.name` dan `git config user.email` **lokal** repo ini adalah akun **MufuyuMoku**, bukan identitas global laptop.
 
