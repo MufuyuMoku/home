@@ -338,3 +338,19 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Apa:** `services/homepage/compose.yaml` ditambah blok `healthcheck` eksplisit, dengan perintah sama seperti bawaan image (`wget --spider -Y off http://127.0.0.1:$$PORT/api/healthcheck`, interval 10s, timeout 3s, retries 3). Yang berubah hanya `start_period: 60s` (bawaan 20s). `docker compose up -d` (container dibuat ulang; config di `/mnt/data/homepage/config` tetap).
 - **Uji restart:** `docker inspect` → `StartPeriod` 60 s, `Memory` 402653184 (384 MiB), `$PORT` terbaca benar. `docker restart homepage`: `starting` (0–16 s) → **`healthy` pada 19 s**, tanpa `unhealthy`. Riwayat: dua healthcheck pertama timeout (exit -1) saat startup, tapi jatuh di dalam start_period sehingga tidak dihitung. HTTP 200. RAM 101 MiB.
 - **Repo:** `docs/rancangan-backup.md` (rancangan konsultan) ditambahkan ke repo.
+
+## 2026-09-28: Backup, Bagian A (script laptop) + Bagian B langkah 1–2
+
+- **Kondisi laptop (dibaca, non-admin):** Windows 11 Home Single Language build 26200, PowerShell 5.1, OpenSSH client 9.5p2. OpenSSH Server **belum** terpasang, user `homebackup` dan `C:\HOME-backup` belum ada, tidak ada rule firewall SSH. Profil jaringan `Ethernet 3` (ICS) dan `Wi-Fi` = Public.
+- **Bagian A: `scripts/laptop/setup-backup-target.ps1`** (dijalankan klien sebagai Administrator, **tidak** dijalankan Claude Code):
+  1. `Add-WindowsCapability OpenSSH.Server` (butuh internet), `sshd` = Automatic.
+  2. Akun lokal `homebackup` + grup Users (SID S-1-5-32-545), dicek bukan Administrators. Password acak 48 byte hanya di memori (SecureString), tidak ditampilkan dan tidak disimpan. Profil dipicu sekali lewat `Start-Process -Credential -LoadUserProfile`, supaya `C:\Users\homebackup` dibuat Windows sendiri (kalau run sebelumnya terhenti, password acak dibuat ulang).
+  3. `C:\HOME-backup` (SYSTEM/Administrators F, homebackup RX hanya folder itu) dan `C:\HOME-backup\restic` (SYSTEM/Administrators F, homebackup Modify), inheritance diputus.
+  4. `sshd_config`: backup asli ke `C:\ProgramData\HOME-backup-setup\sshd_config.orig`. `PasswordAuthentication no` di **awal** file (nilai pertama yang berlaku) + blok `Match User homebackup` (ForceCommand internal-sftp, ChrootDirectory C:\HOME-backup, PasswordAuthentication no, AllowTcpForwarding no, X11Forwarding no, PermitTTY no) di akhir. Validasi `sshd -t`; kalau gagal, file dikembalikan.
+  5. Firewall: `OpenSSH-Server-In-TCP` dinonaktifkan; rule baru `HOME-backup-SSH-In` TCP 22 hanya dari `192.168.137.0/24`.
+  6. Public key STB → `<profil homebackup>\.ssh\authorized_keys` (SYSTEM/Administrators F, homebackup R).
+  - Kondisi awal dicatat di `C:\ProgramData\HOME-backup-setup\state.json`. Menampilkan sidik jari host key laptop untuk dicocokkan dari STB.
+- **`scripts/laptop/remove-backup-target.ps1`:** mengembalikan sshd_config, menghapus rule baru, mengembalikan rule bawaan ke kondisi awal, menghapus akun + profil (kalau dibuat setup), dan meng-uninstall OpenSSH Server kalau semula belum ada. `C:\HOME-backup` hanya dihapus dengan `-RemoveBackupData` + konfirmasi ketik `HAPUS`.
+- **Uji:** parser PowerShell → 0 error di kedua script, 0 baris non-ASCII (PowerShell 5.1 membaca file tanpa BOM sebagai ANSI). `.gitattributes` + `*.ps1 eol=crlf`.
+- **B1:** `apt-get install restic` → `0.16.4-2ubuntu0.24.04.3` dari `ports.ubuntu.com` noble-security (simulasi: 1 paket). Hold tetap 8. `apt-get clean`.
+- **B2:** `/root/.ssh/backup_ed25519` (ed25519, tanpa passphrase, 600; komentar `root@stb-backup (Project HOME restic)`), sidik jari `SHA256:qcGiO/K73cPU/plA2zuqOYmCw4pKQ4gdw/8Xh7ADcR8`. `/root/.ssh/config` (baru, 600): `Host laptop-backup` → 192.168.137.1, `User homebackup`, `IdentityFile /root/.ssh/backup_ed25519`, `IdentitiesOnly yes`, ServerAlive 30×4, ConnectTimeout 15. `authorized_keys` STB tidak disentuh. Public key diberikan ke klien untuk langkah A6 (tidak di-commit).
