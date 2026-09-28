@@ -1,7 +1,8 @@
 # Project HOME: High Operative Management Environment
 
 > **Status:** Fase 0 (fondasi) dan Fase 1 (starter kit, 4 layanan) selesai dan lulus uji reboot (2026-09-28).
-> Belum ada: backup, persistent journal, firewall, dan akses jarak jauh (dirancang terpisah oleh konsultan).
+> Backup harian ke laptop aktif dan lulus uji pemulihan (2026-09-29).
+> Belum ada: persistent journal, firewall, dan akses jarak jauh (dirancang terpisah oleh konsultan).
 
 Homelab pribadi di sebuah STB bekas. Repo ini adalah **sumber kebenaran**: semua yang terpasang di STB
 harus bisa dibangun ulang dari isi repo ini. Semua layanan hanya untuk jaringan lokal, tidak ada yang
@@ -61,6 +62,13 @@ config/etc/systemd/system/docker.service.d/10-home-requires-data.conf
 config/etc/ssh/sshd_config.d/10-home.conf
 scripts/fase0.sh                  # fondasi (idempoten)
 scripts/update.sh                 # update paket manual yang aman (--dry-run untuk simulasi)
+scripts/backup.sh                 # backup restic (dipanggil home-backup/home-check timer)
+scripts/restic-env.sh             # pengaturan restic untuk restore manual (source)
+scripts/laptop/*.ps1              # pengaturan laptop sebagai target backup (dijalankan klien)
+config/etc/systemd/system/home-*  # unit backup + timer
+config/root/.config/rclone/rclone.conf.example
+docs/rancangan-backup.md          # rancangan backup (konsultan)
+docs/restore.md                   # panduan memulihkan data
 services/<nama>/                  # compose.yaml, .env.example, config layanan
 ```
 
@@ -98,8 +106,21 @@ services/<nama>/                  # compose.yaml, .env.example, config layanan
    | uptime-kuma | `mkdir -p /mnt/data/uptime-kuma` | Pilih **SQLite**, buat akun admin, lalu tambah monitor HTTP untuk `:3000`, `:3002`, `:8080` dan TCP `:2222` (pakai IP, bukan `localhost`) |
    | homepage | `mkdir -p /mnt/data/homepage/config`, salin `config/*.yaml` ke sana, `chown -R 1000:1000 /mnt/data/homepage` | Tidak ada login. Cek kartu layanan dan widget STB |
 
-   Tanpa backup, akun, repo Gitea, monitor Uptime Kuma, dan file di `/mnt/data/files` **tidak** ikut terbangun ulang.
-   Yang terbangun ulang dari repo hanya sistem dan konfigurasi layanan.
+   Akun, repo Gitea, monitor Uptime Kuma, dan file di `/mnt/data/files` **tidak** ada di repo ini.
+   Semuanya ada di **backup** dan dipulihkan dengan [docs/restore.md](docs/restore.md) (bagian 3).
+
+## Backup
+
+- **Apa:** seluruh `/mnt/data` kecuali `docker/` dan cache, dienkripsi dengan restic, disimpan di laptop
+  `C:\HOME-backup\restic` (lewat rclone/SFTP, akun khusus `homebackup` yang hanya bisa SFTP ke folder itu).
+- **Kapan:** setiap hari 20:00 WIB dan 10 menit setelah boot. Kalau laptop tidak tersambung, backup dilewati
+  dan dicoba lagi di jadwal berikutnya. Pemeriksaan integritas setiap Minggu 21:00.
+- **Pantau:** monitor "Backup harian" di Uptime Kuma. Merah = tidak ada backup sukses dalam 26 jam, atau backup gagal.
+- **Password repo** hanya ada di password manager klien dan di STB (`/root/.config/restic/password`).
+  Kalau hilang, backup tidak bisa dibuka.
+- **Memulihkan:** [docs/restore.md](docs/restore.md). Rancangan dan alasan teknis: [docs/rancangan-backup.md](docs/rancangan-backup.md).
+- **Laptop:** `scripts/laptop/setup-backup-target.ps1` (pasang) dan `remove-backup-target.ps1` (bongkar),
+  dijalankan klien sebagai Administrator.
 
 ## Perawatan
 
@@ -113,7 +134,6 @@ services/<nama>/                  # compose.yaml, .env.example, config layanan
 
 ## Belum dikerjakan
 
-- **Backup** (wajib dirancang): `/mnt/data/gitea`, `/mnt/data/uptime-kuma`, `/mnt/data/homepage`,
-  `/mnt/data/filebrowser-quantum/data`, `/mnt/data/files`.
+- **Salinan backup ketiga** di luar tas/laptop, dan enkripsi disk laptop (dibahas terpisah).
 - **Persistent journal** (usulan ada di `docs/log.md`).
 - **Firewall, akses jarak jauh (Tailscale), USB WiFi, reverse proxy/domain.**

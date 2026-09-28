@@ -40,6 +40,7 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 - **Port terbuka ke jaringan:** hanya TCP 22. Firewall ditunda (dirancang bersama akses jarak jauh).
 - `/var/lib/containerd` di eMMC (sekitar 354 KB) **dibiarkan permanen** karena dipakai containerd (keputusan final, tidak perlu dilaporkan lagi).
 - **Persistent journal:** ditunda sampai setelah Fase 1, sebagai tugas tersendiri (usulan ada di `docs/log.md`). Journal saat ini masih volatile (RAM).
+- **Backup (sejak 2026-09-29):** restic → **`rclone:laptop-backup:/restic`** (SFTP ke laptop `C:\HOME-backup\restic`, akun `homebackup` ter-chroot, hanya key). Backend `sftp:` restic langsung **tidak bisa** dipakai (bug Win32-OpenSSH#2263, FSETSTAT + chroot). `rclone` dari apt (binary CasaOS lama di `/root/fase0/backup/rclone-casaos-v1.61.1`). `scripts/backup.sh` + `home-backup.timer` (20:00 WIB + 10 menit setelah boot, Persistent) dan `home-check.timer` (Minggu 21:00). Status ke monitor Push Uptime Kuma "Backup harian" (26 jam). Rahasia (dibuat klien, tidak di repo): `/root/.config/restic/password`, `/root/.config/restic/push-url`. Rancangan: `docs/rancangan-backup.md`, pemulihan: `docs/restore.md`.
 - Backup file asli ada di STB: `/root/fase0/backup/`.
 
 ## Aturan mutlak
@@ -62,6 +63,9 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
     4. Terapkan dengan `reload` (bukan restart). Jaga satu sesi SSH lama tetap terbuka dan bisa menerima perintah.
     5. Uji koneksi **baru** dari laptop.
     6. Batalkan timer (`systemctl stop home-rollback.timer`) **hanya** setelah uji koneksi baru berhasil. Kalau gagal, biarkan timer berjalan atau batalkan perubahan lewat sesi lama.
+13. **Layanan baru yang menyimpan data di `/mnt/data` wajib masuk cakupan backup dan uji pemulihan** (`scripts/backup.sh`: daftar container yang di-stop dan exclude; uji restore seperti `docs/restore.md`).
+14. **Tidak ada password, URL push, atau key yang masuk ke repo** (termasuk password restic, `/root/.config/restic/push-url`, dan `/root/.ssh/backup_ed25519`).
+15. **Perubahan pengaturan laptop hanya lewat script yang dijalankan klien sendiri** (`scripts/laptop/*.ps1`, sebagai Administrator). Claude Code tidak mengubah pengaturan Windows secara langsung.
 
 ## Cara kerja
 
