@@ -301,3 +301,14 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Verifikasi:** `running`, health `healthy`, restart 0, `unless-stopped`, `mem_limit` 384 MiB. HTTP `/` → 302 ke `/setup-database` (menunggu klien memilih database). Port hanya `3001→3001`. Data di `/mnt/data/uptime-kuma` (`docker-tls`, `screenshots`, `upload`; database dibuat setelah setup). Log: versi 2.5.5, Node 22.22.3, tanpa error.
 - **RAM:** Uptime Kuma sekitar 109 MiB (Gitea 131 MiB, FileBrowser Quantum 44 MiB). RAM available STB 1451 → **1315 MB** (ambang berhenti 700 MB). **Kartu data terpakai:** 352M → 1011M (image Uptime Kuma).
 - **Setup oleh klien:** pilih database **SQLite** (varian `-slim` tidak punya MariaDB bawaan), lalu buat akun admin. Tidak ada password di repo atau log.
+- **Tes klien:** berhasil.
+
+## 2026-09-28: Fase 1 layanan 4, Homepage
+
+- **Apa:** `/opt/home/services/homepage`: `.env` dari `.env.example` (`HOMEPAGE_ALLOWED_HOSTS=192.168.137.202:3000`, `PUID/PGID` 1000, `TZ`; chmod 600). Config dari repo (`services/homepage/config/*.yaml`) dipasang ke `/mnt/data/homepage/config` (1000:1000). `docker compose up -d` (image `ghcr.io/gethomepage/homepage:v2.4.0`). Tanpa `docker.sock`.
+- **Verifikasi:** `running`, health `healthy`, restart 0, `unless-stopped`, `mem_limit` 256 MiB. Proses `next-server` berjalan sebagai user `node`. Port hanya `3000→3000`.
+  - Host check: `http://192.168.137.202:3000/` → 200. Host lain (`evil.example:3000`) → 400 ("Host validation failed"; satu-satunya error di log, dari uji ini).
+  - `/api/services` → grup "Layanan": Uptime Kuma, Gitea, FileBrowser Quantum. siteMonitor dari dalam container: 3001 → 302, 3002 → 200, 8080 → 200.
+  - Widget resources: CPU OK, `cputemp` 52 °C.
+- **RAM:** Homepage sekitar 104 MiB (CPU sempat 79% saat halaman pertama kali dibangun). RAM available STB 1296 → **1180 MB** (ambang 700 MB). **Kartu data terpakai:** 1012M → 1,3G.
+- **Total Fase 1 (4 layanan):** RAM available **1659 → 1180 MB** (sebelum layanan pertama → setelah layanan keempat). Container: Homepage 104, Uptime Kuma 128, Gitea 130, FileBrowser Quantum 44 MiB.
