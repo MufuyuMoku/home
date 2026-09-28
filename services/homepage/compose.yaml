@@ -7,9 +7,17 @@ services:
     image: ghcr.io/gethomepage/homepage:v2.4.0
     container_name: homepage
     restart: unless-stopped
-    mem_limit: 256m
+    mem_limit: 384m
     ports:
       - "3000:3000"
+    # Sama dengan healthcheck bawaan image, tapi start_period 60s (bawaan 20s):
+    # saat boot empat container start bersamaan dan healthcheck pertama bisa melewati timeout.
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider -Y off http://127.0.0.1:$$PORT/api/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 60s
+      retries: 3
     environment:
       HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS}
       PUID: ${PUID}

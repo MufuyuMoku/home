@@ -331,3 +331,10 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   - Uptime Kuma: keempat monitor **UP** (12:58 UTC = 19:58 WIB).
 - **Temuan kecil:** Homepage sempat `unhealthy`. Dua healthcheck pertama (19:57:36, 19:57:49) melewati timeout 3 s saat load boot tinggi (load 3,5, empat container start bersamaan). Sejak 19:58:04 lulus terus, dan healthcheck manual 0,04 s. Tidak ada restart. Tidak ada tindakan (opsional nanti: `start_period` lebih panjang di compose).
 - **RAM setelah reboot:** available **1206 MB**. Container: Homepage 177 MiB (dari batas 256), Uptime Kuma 198 MiB (384), Gitea 202 MiB (384), FileBrowser Quantum 67 MiB (192). Lebih tinggi daripada setelah pemasangan pertama (104/128/130/44). **Homepage sekitar 69% dari `mem_limit`, perlu dipantau.** Suhu 55 °C. eMMC 48%, `/mnt/data` 1,3G terpakai.
+
+## 2026-09-28: Homepage, mem_limit 384m + healthcheck start_period 60s
+
+- **Keputusan konsultan:** Homepage `mem_limit` 256m → **384m**, healthcheck dengan `start_period` 60 s. Gitea dan Uptime Kuma cukup dipantau (tidak diubah).
+- **Apa:** `services/homepage/compose.yaml` ditambah blok `healthcheck` eksplisit, dengan perintah sama seperti bawaan image (`wget --spider -Y off http://127.0.0.1:$$PORT/api/healthcheck`, interval 10s, timeout 3s, retries 3). Yang berubah hanya `start_period: 60s` (bawaan 20s). `docker compose up -d` (container dibuat ulang; config di `/mnt/data/homepage/config` tetap).
+- **Uji restart:** `docker inspect` → `StartPeriod` 60 s, `Memory` 402653184 (384 MiB), `$PORT` terbaca benar. `docker restart homepage`: `starting` (0–16 s) → **`healthy` pada 19 s**, tanpa `unhealthy`. Riwayat: dua healthcheck pertama timeout (exit -1) saat startup, tapi jatuh di dalam start_period sehingga tidak dihitung. HTTP 200. RAM 101 MiB.
+- **Repo:** `docs/rancangan-backup.md` (rancangan konsultan) ditambahkan ke repo.
