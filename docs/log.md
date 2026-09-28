@@ -293,3 +293,11 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Pemeriksaan sebelum push:** `git status` bersih. Identitas lokal MufuyuMoku `264320223+MufuyuMoku@users.noreply.github.com`, dan seluruh 27 commit (author + committer) memakai identitas itu. Remote `origin` = `https://github.com/MufuyuMoku/home.git`. Tidak ada file `.env`/key/token di riwayat commit.
 - **Push:** `git push origin main` → `62a45a7..d9b8c31`, **26 commit ter-push**. `origin/main` = 27 commit, sejajar dengan `main`.
 - **Aturan baru di CLAUDE.md ("Cara kerja"):** setiap selesai satu langkah/checkpoint yang dilaporkan ke klien: commit lalu push ke GitHub. Repo yang hanya ada di laptop tidak dianggap tersimpan.
+- Push kedua: `d9b8c31..29fe23e`, sehingga GitHub berisi 28 commit. Klien akan menekan "Sync now" di mirror Gitea.
+
+## 2026-09-28: Fase 1 layanan 3, Uptime Kuma
+
+- **Apa:** `/opt/home/services/uptime-kuma`: `.env` dari `.env.example` (hanya `TZ`, chmod 600). `mkdir /mnt/data/uptime-kuma`, lalu `docker compose up -d` (image `louislam/uptime-kuma:2.5.5-slim`).
+- **Verifikasi:** `running`, health `healthy`, restart 0, `unless-stopped`, `mem_limit` 384 MiB. HTTP `/` → 302 ke `/setup-database` (menunggu klien memilih database). Port hanya `3001→3001`. Data di `/mnt/data/uptime-kuma` (`docker-tls`, `screenshots`, `upload`; database dibuat setelah setup). Log: versi 2.5.5, Node 22.22.3, tanpa error.
+- **RAM:** Uptime Kuma sekitar 109 MiB (Gitea 131 MiB, FileBrowser Quantum 44 MiB). RAM available STB 1451 → **1315 MB** (ambang berhenti 700 MB). **Kartu data terpakai:** 352M → 1011M (image Uptime Kuma).
+- **Setup oleh klien:** pilih database **SQLite** (varian `-slim` tidak punya MariaDB bawaan), lalu buat akun admin. Tidak ada password di repo atau log.
