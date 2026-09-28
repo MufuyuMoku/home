@@ -9,14 +9,18 @@
 #   4. devmon mati; kartu data (microSD via card reader USB) di /mnt/data
 #      -> FORMAT & FSTAB TETAP MANUAL (butuh konfirmasi klien); script hanya memeriksa
 #   5. Docker: daemon.json (data-root /mnt/data/docker, overlay2, log 10m x 3)
-#      + drop-in RequiresMountsFor=/mnt/data
+#      + drop-in RequiresMountsFor=/mnt/data; dipasang dari download.docker.com kalau belum ada
+#   6. pengerasan hasil audit: CasaOS/rclone, Samba, rpcbind, openvpn dimatikan (tidak
+#      di-uninstall); user devmon tanpa shell; SSH hanya-key (sshd_config.d/10-home.conf)
 #
 # Pemakaian (di STB, sebagai root, repo disalin ke /opt/home):
 #   screen -S fase0 /opt/home/scripts/fase0.sh
+# Setelah selesai: uji koneksi SSH BARU dari laptop sebelum menutup sesi ini.
 #
 # Script berhenti kalau ada kondisi yang tidak sesuai. Tidak ada yang menyentuh
-# kernel, DTB, bootloader, /boot, jaringan, SSH, slot SD (mmcblk1), atau memformat
-# disk apa pun. Tidak ada reboot.
+# kernel, DTB, bootloader, /boot, konfigurasi jaringan, slot SD (mmcblk1), atau
+# memformat disk apa pun. Konfigurasi SSH hanya ditambah drop-in 10-home.conf.
+# Tidak ada reboot.
 
 set -euo pipefail
 
@@ -36,6 +40,8 @@ DROPIN_SRC="$REPO_DIR/config/etc/systemd/system/docker.service.d/10-home-require
 DROPIN=/etc/systemd/system/docker.service.d/10-home-requires-data.conf
 DATA_MNT=/mnt/data
 DATA_LABEL=HOMEDATA
+SSHD_DROPIN_SRC="$REPO_DIR/config/etc/ssh/sshd_config.d/10-home.conf"
+SSHD_DROPIN=/etc/ssh/sshd_config.d/10-home.conf
 
 log()  { echo "[fase0] $*"; }
 step() { echo; echo "[fase0] === $* ==="; }
@@ -58,6 +64,7 @@ installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install o
 [ -x "$REPO_DIR/scripts/update.sh" ] || fail "scripts/update.sh tidak ditemukan / tidak executable"
 [ -f "$DAEMON_JSON_SRC" ] || fail "$DAEMON_JSON_SRC tidak ditemukan"
 [ -f "$DROPIN_SRC" ] || fail "$DROPIN_SRC tidak ditemukan"
+[ -f "$SSHD_DROPIN_SRC" ] || fail "$SSHD_DROPIN_SRC tidak ditemukan"
 
 # --- 1. Inventaris (hanya membaca) -----------------------------------------
 step "1. Inventaris"
@@ -139,7 +146,7 @@ fi
 
 # --- 4. Kartu data ---------------------------------------------------------
 step "4. Kartu data"
-if systemctl list-unit-files 'devmon@.service' --no-legend | grep -q devmon; then
+if grep -q devmon < <(systemctl list-unit-files 'devmon@.service' --no-legend); then
   if systemctl is-enabled --quiet devmon@devmon.service 2>/dev/null \
      || systemctl is-active --quiet devmon@devmon.service; then
     systemctl disable --now devmon@devmon.service
@@ -148,11 +155,11 @@ if systemctl list-unit-files 'devmon@.service' --no-legend | grep -q devmon; the
     log "devmon sudah mati"
   fi
 fi
-if findmnt -rn | grep -q ' /media/devmon'; then
+if grep -q ' /media/devmon' < <(findmnt -rn); then
   fail "masih ada mount di /media/devmon; lepas manual dulu"
 fi
 # Slot SD STB tidak dipakai (aturan 11): tidak boleh ada mount dari mmcblk1.
-if findmnt -rno SOURCE | grep -q '^/dev/mmcblk1'; then
+if grep -q '^/dev/mmcblk1' < <(findmnt -rno SOURCE); then
   fail "ada partisi slot SD (mmcblk1) yang ter-mount; slot SD tidak boleh dipakai"
 fi
 # Format + fstab kartu data SENGAJA manual (butuh konfirmasi klien atas device-nya):
@@ -175,10 +182,10 @@ log "$DATA_MNT OK ($data_src, $DATA_LABEL, usb)"
 
 # --- 5. Docker -------------------------------------------------------------
 step "5. Docker"
-# TODO: di STB proyek ini Docker sudah terpasang dari download.docker.com sebelum
-# proyek dimulai. Pemasangan otomatis untuk STB baru belum dibuat/diuji.
-command -v docker >/dev/null || fail "Docker belum terpasang (pemasangan belum diotomatiskan)"
-docker compose version >/dev/null 2>&1 || fail "docker compose plugin belum terpasang"
+# Konfigurasi dipasang SEBELUM Docker di-install, supaya pada STB baru Docker langsung
+# menyala dengan data-root /mnt/data/docker + overlay2 dan tidak pernah menulis ke eMMC.
+had_docker=0
+command -v dockerd >/dev/null && had_docker=1
 
 changed=0
 if ! cmp -s "$DROPIN_SRC" "$DROPIN"; then
@@ -189,11 +196,15 @@ if ! cmp -s "$DROPIN_SRC" "$DROPIN"; then
   log "drop-in RequiresMountsFor=$DATA_MNT dipasang"
 fi
 if ! cmp -s "$DAEMON_JSON_SRC" "$DAEMON_JSON"; then
-  dockerd --validate --config-file "$DAEMON_JSON_SRC" >/dev/null || fail "daemon.json di repo tidak valid"
-  # Ganti data-root/storage driver hanya kalau Docker masih kosong (tidak ada data yang tertinggal).
-  if [ "$(docker info --format '{{.DockerRootDir}}')" != "$DATA_MNT/docker" ]; then
-    [ -z "$(docker ps -aq)" ] && [ -z "$(docker images -aq)" ] \
-      || fail "Docker sudah punya container/image di data-root lama; pindahkan manual"
+  python3 -m json.tool "$DAEMON_JSON_SRC" >/dev/null || fail "daemon.json di repo bukan JSON valid"
+  if [ "$had_docker" -eq 1 ]; then
+    dockerd --validate --config-file "$DAEMON_JSON_SRC" >/dev/null || fail "daemon.json di repo ditolak dockerd"
+    # Ganti data-root/storage driver hanya kalau Docker masih kosong (tidak ada data yang tertinggal).
+    if systemctl is-active --quiet docker \
+       && [ "$(docker info --format '{{.DockerRootDir}}')" != "$DATA_MNT/docker" ]; then
+      [ -z "$(docker ps -aq)" ] && [ -z "$(docker images -aq)" ] \
+        || fail "Docker sudah punya container/image di data-root lama; pindahkan manual"
+    fi
   fi
   mkdir -p /etc/docker "$DATA_MNT/docker"
   chmod 710 "$DATA_MNT/docker"
@@ -202,11 +213,34 @@ if ! cmp -s "$DAEMON_JSON_SRC" "$DAEMON_JSON"; then
   changed=1
   log "daemon.json dipasang"
 fi
-if [ "$changed" -eq 1 ]; then systemctl restart docker; log "docker di-restart"; else log "konfigurasi Docker sudah sesuai"; fi
+
+if [ "$had_docker" -eq 0 ]; then
+  # Pemasangan dari repo resmi Docker (https://docs.docker.com/engine/install/ubuntu/).
+  log "Docker belum ada: memasang dari download.docker.com"
+  . /etc/os-release
+  [ "${UBUNTU_CODENAME:-$VERSION_CODENAME}" = noble ] || fail "basis OS bukan Ubuntu noble"
+  apt-get install -y ca-certificates curl
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+  log "Docker terpasang: $(docker --version)"
+elif [ "$changed" -eq 1 ]; then
+  systemctl restart docker
+  log "docker di-restart"
+else
+  log "konfigurasi Docker sudah sesuai"
+fi
+docker compose version >/dev/null 2>&1 || fail "docker compose plugin belum terpasang"
 systemctl is-active --quiet docker || fail "docker tidak aktif"
 [ "$(docker info --format '{{.DockerRootDir}}')" = "$DATA_MNT/docker" ] || fail "Docker Root Dir bukan $DATA_MNT/docker"
 [ "$(docker info --format '{{.Driver}}')" = overlay2 ] || fail "storage driver bukan overlay2"
-systemctl show docker -p RequiresMountsFor --value | grep -qw "$DATA_MNT" || fail "docker.service tidak RequiresMountsFor=$DATA_MNT"
+grep -qw "$DATA_MNT" < <(systemctl show docker -p RequiresMountsFor --value) || fail "docker.service tidak RequiresMountsFor=$DATA_MNT"
 log "Docker: root $DATA_MNT/docker, overlay2, menunggu $DATA_MNT"
 
 had_hello=0
@@ -214,6 +248,52 @@ docker image inspect hello-world >/dev/null 2>&1 && had_hello=1
 docker run --rm hello-world >/dev/null || fail "docker run hello-world gagal"
 [ "$had_hello" -eq 1 ] || docker rmi hello-world >/dev/null
 log "docker run hello-world OK"
+
+# --- 6. Pengerasan (hasil audit keamanan 2026-09-28) -------------------------
+step "6a. CasaOS + rclone mati (tidak di-uninstall)"
+disable_units() {
+  local u
+  for u in "$@"; do
+    if ! systemctl cat "$u" >/dev/null 2>&1; then log "lewati $u (tidak ada)"; continue; fi
+    if systemctl is-enabled --quiet "$u" 2>/dev/null || systemctl is-active --quiet "$u"; then
+      systemctl disable --now "$u"
+      log "$u dimatikan"
+    else
+      log "$u sudah mati"
+    fi
+    # Beberapa unit keluar dengan kode != 0 saat di-stop (mis. SIGTERM); itu bukan kegagalan.
+    systemctl reset-failed "$u" 2>/dev/null || true
+  done
+}
+disable_units casaos.service casaos-gateway.service casaos-app-management.service \
+  casaos-local-storage.service casaos-message-bus.service casaos-user-service.service rclone.service
+
+step "6b. Samba, rpcbind, openvpn mati; devmon tanpa shell"
+# wpa_supplicant sengaja dibiarkan (untuk USB WiFi nanti).
+disable_units smbd.service nmbd.service samba-ad-dc.service rpcbind.service rpcbind.socket openvpn.service
+if getent passwd devmon >/dev/null && [ "$(getent passwd devmon | cut -d: -f7)" != /usr/sbin/nologin ]; then
+  usermod -s /usr/sbin/nologin devmon
+  log "shell devmon -> /usr/sbin/nologin"
+fi
+
+step "6c. SSH hanya-key"
+# PENTING: setelah langkah ini, uji koneksi BARU dari laptop (`ssh stb`) sebelum menutup sesi
+# yang sedang dipakai. Membatalkan: rm $SSHD_DROPIN && systemctl reload ssh
+[ -s /root/.ssh/authorized_keys ] && ssh-keygen -lf /root/.ssh/authorized_keys >/dev/null 2>&1 \
+  || fail "/root/.ssh/authorized_keys kosong/tidak valid; SSH hanya-key akan mengunci akses"
+if ! cmp -s "$SSHD_DROPIN_SRC" "$SSHD_DROPIN"; then
+  install -m 644 -o root -g root "$SSHD_DROPIN_SRC" "$SSHD_DROPIN"
+  if ! sshd -t; then rm -f "$SSHD_DROPIN"; fail "sshd -t gagal; $SSHD_DROPIN dihapus lagi"; fi
+  systemctl reload ssh
+  log "SSH hanya-key diterapkan (reload). UJI KONEKSI BARU SEKARANG."
+else
+  log "SSH hanya-key sudah berlaku"
+fi
+# Simpan dulu ke variabel: `sshd -T | grep -q` bisa kena SIGPIPE dan gagal di bawah pipefail.
+sshd_eff=$(sshd -T)
+grep -qx 'passwordauthentication no' <<<"$sshd_eff" || fail "passwordauthentication bukan no"
+grep -qx 'permitrootlogin without-password' <<<"$sshd_eff" || fail "permitrootlogin bukan prohibit-password"
+log "sshd efektif: passwordauthentication no, permitrootlogin prohibit-password"
 
 step "Selesai"
 log "RAM: $(free -h | awk '/^Mem:/{print $7" tersedia dari "$2}')"

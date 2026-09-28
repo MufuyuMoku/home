@@ -200,3 +200,10 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 ## 2026-09-28: Tindak lanjut audit (4): firewall
 
 - **Ditunda, akan dirancang bersama akses jarak jauh/forum.** Tidak ada perubahan. Saat ini port yang terbuka ke jaringan hanya TCP 22.
+
+## 2026-09-28: Tindak lanjut audit (5): `fase0.sh` diperluas, plus perbaikan bug SIGPIPE
+
+- **`fase0.sh` bagian 5:** `daemon.json` dan drop-in dipasang **sebelum** Docker. Kalau `dockerd` belum ada, Docker dipasang dari repo resmi (keyring `/etc/apt/keyrings/docker.asc`, `/etc/apt/sources.list.d/docker.list` dengan format sama seperti di STB ini, lalu `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin`), sehingga Docker pertama kali menyala langsung dengan `/mnt/data/docker` + overlay2.
+- **`fase0.sh` bagian 6 (baru):** 6a CasaOS + rclone `disable --now` (+ `reset-failed`), 6b Samba/rpcbind (service + socket)/openvpn `disable --now`, shell devmon → nologin, `wpa_supplicant` dibiarkan. 6c SSH hanya-key: wajib ada `authorized_keys` yang valid, pasang `10-home.conf`, `sshd -t` (kalau gagal, file dihapus lagi), `systemctl reload ssh`, lalu verifikasi `sshd -T`. Komentar mengingatkan untuk menguji koneksi SSH baru sebelum menutup sesi.
+- **Bug ditemukan saat uji:** `sshd -T | grep -q ...` gagal di bawah `set -o pipefail` karena SIGPIPE, walaupun nilainya benar. Pola yang sama di `update.sh` (`dpkg -L | grep -q '^/boot'`) **bisa meloloskan paket yang menyentuh `/boot`** kalau daftar filenya panjang. Semua pola `cmd | grep -q` yang berisiko diganti `grep -q ... < <(cmd)` atau variabel.
+- **Uji (tanpa mengubah STB):** `bash -n` OK untuk kedua script. Bagian 6 dijalankan dengan perintah pengubah ditiru → semua unit "sudah mati", SSH "sudah berlaku", exit 0. Bagian pemeriksaan 4+5 → OK. Deteksi `/boot` di bawah pipefail: BSP dan `linux-image-current-meson64` ditolak, `coreutils`/`docker-ce` lolos. `update.sh --dry-run` → OK. **Belum teruji:** pemasangan Docker dari nol (Docker sudah ada di STB ini), dan akan teruji saat membangun STB baru.

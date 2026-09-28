@@ -94,7 +94,8 @@ for p in "${pkgs[@]}"; do
   if ! [[ "$src" =~ $ALLOWED_SOURCES_RE ]]; then
     bad+=("$p $cand dari '${src:-tidak diketahui}'"); continue
   fi
-  if dpkg -L "$p" 2>/dev/null | grep -q '^/boot'; then
+  # Bukan `dpkg -L | grep -q`: di bawah pipefail, SIGPIPE ke dpkg bisa membuat paket /boot lolos.
+  if grep -q '^/boot' < <(dpkg -L "$p" 2>/dev/null); then
     bad+=("$p (memiliki file di /boot)")
   fi
 done
