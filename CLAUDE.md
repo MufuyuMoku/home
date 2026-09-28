@@ -25,6 +25,15 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 
 **Tidak ada HDMI dan tidak ada router.** Kalau STB gagal boot atau kehilangan jaringan/SSH, klien tidak punya cara untuk memperbaikinya selain flashing ulang. Karena itu aturan di bawah ini mutlak.
 
+## Kondisi paket & update (sejak 2026-09-28)
+
+- **Paket yang ditahan (`apt-mark hold`):** `linux-image-current-meson64`, `linux-dtb-current-meson64`, `armbian-bsp-cli-aml-s9xx-box-current` (memiliki file di `/boot`), `armbian-config`, `armbian-firmware`, `armbian-plymouth-theme`, `armbian-zsh`, `base-files`.
+- **Repo Armbian beta dimatikan:** semua baris di `/etc/apt/sources.list.d/armbian.sources` (`beta.armbian.com`) diberi komentar. Paket hanya di-update dari Ubuntu (`ports.ubuntu.com`) dan Docker resmi.
+- **Initramfs dibekukan:** `update_initramfs=no` di `/etc/initramfs-tools/update-initramfs.conf`, supaya upgrade paket tidak membangun ulang `/boot/initrd.img-*` dan `/boot/uInitrd`.
+- **Update otomatis mati:** `/etc/apt/apt.conf.d/99home-no-auto-upgrades` men-set `APT::Periodic::Update-Package-Lists` dan `APT::Periodic::Unattended-Upgrade` ke `"0"` (aktifkan kembali dengan menghapus file itu). Update dilakukan manual lewat `scripts/update.sh`.
+- **Docker sudah terpasang** dari repo resmi `download.docker.com` (docker-ce + compose plugin) sebelum proyek dimulai.
+- Backup file asli ada di STB: `/root/fase0/backup/`.
+
 ## Aturan mutlak
 
 1. **Jangan pernah menyentuh kernel, DTB, atau bootloader.** Paket `linux-image-current-meson64` dan `linux-dtb-current-meson64` sudah di-`apt-mark hold`; jangan di-unhold. Jangan ubah `/boot`, `extlinux`, `uEnv`, atau u-boot. Jangan jalankan `armbian-upgrade`, `armbian-install`, `install-aml.sh`, atau apa pun yang menulis ke eMMC di luar filesystem biasa.
@@ -35,6 +44,8 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 6. **RAM terbatas.** Setiap container wajib diberi batas memori (`mem_limit`). Periksa `free -h` sebelum dan sesudah memasang layanan baru. Hanya pakai image yang mendukung `linux/arm64`.
 7. **Tidak ada rahasia di repo.** Password dan token disimpan di file `.env` (masuk `.gitignore`); yang di-commit hanya `.env.example`.
 8. **Tidak ada yang diekspos ke internet.** Semua layanan hanya untuk jaringan lokal.
+9. **Jangan pernah mengaktifkan kembali repo Armbian beta** (`beta.armbian.com`) tanpa persetujuan klien.
+10. **Jangan melepas hold paket apa pun** (lihat daftar di "Kondisi paket & update") tanpa persetujuan klien. Hal yang sama berlaku untuk mengembalikan `update_initramfs=yes` atau menyalakan lagi update otomatis.
 
 ## Cara kerja
 
@@ -62,8 +73,8 @@ Kerjakan berurutan, dan laporkan ke klien setelah setiap poin.
 2. **Update paket.** `apt update && apt upgrade` (paket kernel tetap tertahan). Pastikan ulang dengan `apt-mark showhold`.
 3. **Zona waktu** `Asia/Jakarta`.
 4. **microSD** (butuh konfirmasi klien sebelum format). Format ext4 dengan label `HOMEDATA`, pasang di `/mnt/data` via fstab dengan opsi `defaults,noatime,nofail`. Verifikasi sesuai aturan 3.
-5. **Docker.** Pasang Docker Engine + compose plugin (arm64). Pindahkan `data-root` ke `/mnt/data/docker` (eMMC terlalu kecil untuk image). Atur rotasi log di `daemon.json` (misalnya `max-size 10m`, `max-file 3`). Tes dengan `docker run --rm hello-world`.
-6. Buat `scripts/fase0.sh` yang merangkum langkah 2–5, supaya bisa dijalankan ulang di STB baru.
+5. **Docker (konfigurasi ulang).** Docker Engine + compose plugin sudah terpasang dari repo resmi; tidak perlu dipasang lagi. Pindahkan `data-root` dari `/var/lib/docker` ke `/mnt/data/docker` (eMMC terlalu kecil untuk image). Atur rotasi log di `daemon.json` (misalnya `max-size 10m`, `max-file 3`). Tes dengan `docker run --rm hello-world`.
+6. Buat `scripts/fase0.sh` yang merangkum langkah 2–5, supaya bisa dijalankan ulang di STB baru (termasuk hold paket, mematikan repo beta, membekukan initramfs, dan mematikan update otomatis). Buat juga `scripts/update.sh` untuk update manual yang aman.
 
 **Checkpoint:** laporkan ke klien sebelum lanjut ke Fase 1.
 
