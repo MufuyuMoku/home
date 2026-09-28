@@ -354,3 +354,18 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Uji:** parser PowerShell → 0 error di kedua script, 0 baris non-ASCII (PowerShell 5.1 membaca file tanpa BOM sebagai ANSI). `.gitattributes` + `*.ps1 eol=crlf`.
 - **B1:** `apt-get install restic` → `0.16.4-2ubuntu0.24.04.3` dari `ports.ubuntu.com` noble-security (simulasi: 1 paket). Hold tetap 8. `apt-get clean`.
 - **B2:** `/root/.ssh/backup_ed25519` (ed25519, tanpa passphrase, 600; komentar `root@stb-backup (Project HOME restic)`), sidik jari `SHA256:qcGiO/K73cPU/plA2zuqOYmCw4pKQ4gdw/8Xh7ADcR8`. `/root/.ssh/config` (baru, 600): `Host laptop-backup` → 192.168.137.1, `User homebackup`, `IdentityFile /root/.ssh/backup_ed25519`, `IdentitiesOnly yes`, ServerAlive 30×4, ConnectTimeout 15. `authorized_keys` STB tidak disentuh. Public key diberikan ke klien untuk langkah A6 (tidak di-commit).
+
+## 2026-09-28: Backup A, `setup-backup-target.ps1` gagal di langkah 1 → script diperbaiki
+
+- **Laporan klien:** run pertama berhenti di langkah 1. `Add-WindowsCapability` gagal dengan **0x800f0993**, dan langkah lain tidak berjalan.
+- **Push tertunda:** `git push` menggantung karena Git Credential Manager menunggu login GitHub (non-interaktif: "could not read Username"). Klien akan login sendiri, dan Claude Code tidak memasukkan kredensial. Commit `28283f9` belum ter-push.
+- **Pemeriksaan aman-dijalankan-ulang (membaca script + laptop, non-admin):** `state.json` ditulis **sebelum** langkah 1, dan isinya kondisi awal yang benar (`openSshServerWasInstalled/defaultRuleExisted/userExisted/sshdConfigExisted = false`, 22:48:38). Pada run ulang, file yang sudah ada hanya dibaca, tidak ditimpa. Langkah 2–6 idempoten (cek akun/grup/profil, `New-Item -Force`, icacls diterapkan ulang, penanda di sshd_config, rule firewall dicek dulu, authorized_keys ditulis ulang).
+- **Kondisi laptop sekarang:** service `sshd` **sudah ada**: fitur Windows `C:\Windows\System32\OpenSSH\sshd.exe`, Stopped/Manual, `sshd_config` belum ada, rule `OpenSSH-Server-In-TCP` ada dan Enabled (tidak ada listener port 22 karena sshd berhenti). `homebackup` dan `C:\HOME-backup` belum ada. Tidak ada entri MSI OpenSSH di Apps.
+- **Perubahan `setup-backup-target.ps1`:**
+  - Langkah 1: kalau service `sshd` sudah ada (fitur Windows, Settings, atau MSI), `Add-WindowsCapability` dilewati. Kalau pemasangan gagal: `BERHENTI` dengan kode error dan tiga jalur: (a) restart + Windows Update lalu ulangi, (b) Settings > System > Optional features > OpenSSH Server, (c) MSI resmi `github.com/PowerShell/Win32-OpenSSH/releases`. Tidak ada error mentah.
+  - Jalur `sshd.exe`/`ssh-keygen.exe` dibaca dari service `sshd` (MSI: `C:\Program Files\OpenSSH\`), tidak lagi di-hardcode ke System32.
+  - `Get-WindowsCapability` di pencatatan awal dibungkus try/catch. Baseline juga menganggap OpenSSH "sudah ada" kalau service sshd ada (untuk mesin lain).
+  - Cara OpenSSH terpasang dicatat terpisah di `openssh-install.json` (sekali saja), sehingga `state.json` tidak diubah.
+  - Firewall: semua rule inbound Allow yang aktif bernama/berlabel OpenSSH/sshd (selain `HOME-backup-SSH-In`) dimatikan dan namanya dicatat di `disabled-firewall-rules.json`.
+- **Perubahan `remove-backup-target.ps1`:** rule yang tercatat di `disabled-firewall-rules.json` dinyalakan kembali. OpenSSH dari **MSI tidak di-uninstall otomatis** (sshd dinonaktifkan + petunjuk Settings > Apps > Installed apps > OpenSSH > Uninstall). Fitur Windows di-uninstall seperti sebelumnya, dengan fallback petunjuk manual kalau `Remove-WindowsCapability` gagal.
+- **Uji:** parser PowerShell 0 error di kedua script, 0 non-ASCII. Regex jalur sshd diuji untuk format System32, `"C:\Program Files\OpenSSH\sshd.exe"`, dan dengan argumen.

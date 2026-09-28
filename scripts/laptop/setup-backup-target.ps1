@@ -3,7 +3,10 @@ Project HOME - menyiapkan laptop Windows sebagai target backup (SFTP) untuk STB.
 Rancangan: docs/rancangan-backup.md, Bagian A. DIJALANKAN OLEH KLIEN, sebagai Administrator.
 
 Yang dilakukan (bisa dijalankan ulang; langkah yang sudah beres dilewati):
-  1. Pasang fitur Windows "OpenSSH Server" (butuh internet), service sshd = Automatic.
+  1. OpenSSH Server: kalau service sshd sudah ada (fitur Windows, Settings > Optional features,
+     atau MSI resmi Win32-OpenSSH), dipakai apa adanya. Kalau belum, dipasang sebagai fitur
+     Windows (butuh internet). Kalau gagal, script berhenti dan menjelaskan jalur lain.
+     Service sshd = Automatic.
   2. Buat akun lokal standar "homebackup" (anggota Users, BUKAN admin). Password acak panjang
      dibuat di memori, TIDAK ditampilkan dan TIDAK disimpan (akun ini hanya login dengan key).
   3. Buat C:\HOME-backup\restic. Izin: hanya homebackup, SYSTEM, Administrators.
@@ -30,8 +33,9 @@ $BackupRoot  = 'C:\HOME-backup'
 $RepoDir     = 'C:\HOME-backup\restic'
 $StateDir    = 'C:\ProgramData\HOME-backup-setup'
 $StateFile   = Join-Path $StateDir 'state.json'
+$InstallFile = Join-Path $StateDir 'openssh-install.json'
+$FwDisabledFile = Join-Path $StateDir 'disabled-firewall-rules.json'
 $SshdConfig  = 'C:\ProgramData\ssh\sshd_config'
-$SshdExe     = 'C:\Windows\System32\OpenSSH\sshd.exe'
 $StbSubnet   = '192.168.137.0/24'
 $FwRuleName  = 'HOME-backup-SSH-In'
 $FwDefault   = 'OpenSSH-Server-In-TCP'
@@ -57,6 +61,18 @@ function New-RandomSecurePassword {
     [Array]::Clear($bytes, 0, $bytes.Length)
     return $s
 }
+# Lokasi sshd.exe diambil dari service (fitur Windows: System32\OpenSSH; MSI: Program Files\OpenSSH).
+function Get-SshdExe {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='sshd'" -ErrorAction SilentlyContinue
+    if (-not $svc -or -not $svc.PathName) { return $null }
+    if ($svc.PathName -match '^\s*"([^"]+)"') { return $Matches[1] }
+    if ($svc.PathName -match '^\s*(\S+\.exe)') { return $Matches[1] }
+    return $null
+}
+function Get-OpenSshCapability {
+    try { return (Get-WindowsCapability -Online -Name 'OpenSSH.Server*' -ErrorAction Stop | Select-Object -First 1) }
+    catch { return $null }
+}
 function Get-UserProfileDir($name) {
     $sid = (Get-LocalUser -Name $name).SID.Value
     $p = Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $sid }
@@ -78,11 +94,11 @@ if (Test-Path $StateFile) {
     $state = Get-Content $StateFile -Raw | ConvertFrom-Json
     Info "Catatan kondisi awal sudah ada ($StateFile), tidak ditimpa."
 } else {
-    $cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
+    $cap = Get-OpenSshCapability
     $fw  = Get-NetFirewallRule -Name $FwDefault -ErrorAction SilentlyContinue
     $state = [pscustomobject]@{
         created                   = (Get-Date).ToString('s')
-        openSshServerWasInstalled = ($cap.State -eq 'Installed')
+        openSshServerWasInstalled = (($cap -and $cap.State -eq 'Installed') -or [bool](Get-Service sshd -ErrorAction SilentlyContinue))
         defaultRuleExisted        = [bool]$fw
         defaultRuleWasEnabled     = [bool]($fw -and $fw.Enabled -eq 'True')
         userExisted               = [bool](Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue)
@@ -94,15 +110,43 @@ if (Test-Path $StateFile) {
 
 # --- 1. OpenSSH Server --------------------------------------------------------
 Step '1. OpenSSH Server'
-$cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
-if (-not $cap) { Stop-Setup 'fitur OpenSSH.Server tidak ditemukan di Windows ini.' }
-if ($cap.State -ne 'Installed') {
-    Info "Memasang $($cap.Name) (butuh internet, bisa beberapa menit)..."
-    Add-WindowsCapability -Online -Name $cap.Name | Out-Null
+$InstallHelp = @'
+OpenSSH Server tidak bisa dipasang otomatis lewat fitur Windows. Pilih SALAH SATU jalur, lalu
+jalankan ulang script ini (catatan kondisi awal tidak akan ditimpa):
+  (a) Restart laptop, jalankan Windows Update sampai tuntas, lalu ulangi script ini.
+  (b) Pasang manual: Settings > System > Optional features > View features / Add a feature >
+      "OpenSSH Server" > Install. Setelah terpasang, ulangi script ini.
+  (c) Pasang MSI resmi Microsoft dari https://github.com/PowerShell/Win32-OpenSSH/releases
+      (file OpenSSH-Win64-v*.msi), lalu ulangi script ini.
+'@
+if (Get-Service sshd -ErrorAction SilentlyContinue) {
+    Info 'Service sshd sudah ada (fitur Windows, Settings, atau MSI); pemasangan dilewati.'
+    $method = 'sudah-ada'
 } else {
-    Info 'Sudah terpasang.'
+    $cap = Get-OpenSshCapability
+    if (-not $cap) { Stop-Setup ("fitur OpenSSH.Server tidak bisa dibaca dari Windows.`n" + $InstallHelp) }
+    Info "Memasang $($cap.Name) (butuh internet, bisa beberapa menit)..."
+    try {
+        Add-WindowsCapability -Online -Name $cap.Name -ErrorAction Stop | Out-Null
+    } catch {
+        $code = if ($_.Exception.HResult) { '0x{0:X8}' -f $_.Exception.HResult } else { 'tidak diketahui' }
+        Stop-Setup ("pemasangan fitur OpenSSH Server gagal (kode $code).`n" + $InstallHelp)
+    }
+    if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) {
+        Stop-Setup ("fitur terpasang tapi service sshd belum muncul (mungkin perlu restart).`n" + $InstallHelp)
+    }
+    $method = 'fitur-windows-oleh-setup'
 }
-if (-not (Test-Path $SshdExe)) { Stop-Setup "$SshdExe tidak ada setelah pemasangan." }
+$SshdExe = Get-SshdExe
+if (-not $SshdExe -or -not (Test-Path $SshdExe)) { Stop-Setup 'lokasi sshd.exe tidak bisa dibaca dari service sshd.' }
+$SshDir = Split-Path $SshdExe -Parent
+$isMsi = -not $SshDir.StartsWith("$env:SystemRoot\System32", [StringComparison]::OrdinalIgnoreCase)
+if ($isMsi) { $method = "$method (msi: $SshDir)" }
+Info "sshd.exe: $SshdExe"
+if (-not (Test-Path $InstallFile)) {
+    [pscustomobject]@{ recorded = (Get-Date).ToString('s'); method = $method; sshdExe = $SshdExe; msi = $isMsi } |
+        ConvertTo-Json | Set-Content -Path $InstallFile -Encoding ASCII
+}
 Set-Service -Name sshd -StartupType Automatic
 if (-not (Test-Path $SshdConfig)) {
     # Start pertama membuat sshd_config dan host key.
@@ -209,10 +253,21 @@ if ($changed) {
 
 # --- 5. Firewall --------------------------------------------------------------
 Step '5. Firewall'
-if (Get-NetFirewallRule -Name $FwDefault -ErrorAction SilentlyContinue) {
-    Disable-NetFirewallRule -Name $FwDefault
-    Info "Rule bawaan $FwDefault dimatikan (sebelumnya membuka port 22 untuk semua jaringan)."
+# Matikan semua rule inbound OpenSSH/sshd selain milik kita (nama rule bawaan fitur Windows
+# dan MSI bisa berbeda). Nama yang dimatikan dicatat supaya remove-backup-target.ps1 bisa
+# menyalakannya kembali.
+$disabledBefore = @()
+if (Test-Path $FwDisabledFile) { $disabledBefore = @(Get-Content $FwDisabledFile -Raw | ConvertFrom-Json) }
+$sshRules = Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -ne $FwRuleName -and $_.Enabled -eq 'True' -and $_.Action -eq 'Allow' -and
+    ($_.Name -like '*OpenSSH*' -or $_.DisplayName -like '*OpenSSH*' -or $_.DisplayName -like '*sshd*')
 }
+foreach ($r in $sshRules) {
+    Disable-NetFirewallRule -Name $r.Name
+    if ($disabledBefore -notcontains $r.Name) { $disabledBefore += $r.Name }
+    Info "Rule $($r.Name) ($($r.DisplayName)) dimatikan (membuka port 22 untuk semua jaringan)."
+}
+ConvertTo-Json -InputObject @($disabledBefore) | Set-Content -Path $FwDisabledFile -Encoding ASCII
 if (-not (Get-NetFirewallRule -Name $FwRuleName -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -Name $FwRuleName -DisplayName 'Project HOME: SSH hanya dari STB (192.168.137.0/24)' `
         -Direction Inbound -Protocol TCP -LocalPort 22 -RemoteAddress $StbSubnet -Action Allow -Profile Any | Out-Null
@@ -239,6 +294,6 @@ Step 'Menyalakan sshd'
 Start-Service sshd
 Get-Service sshd | Select-Object Name, Status, StartType | Format-Table -AutoSize | Out-String | Write-Host
 Write-Host 'Sidik jari host key laptop (untuk dicocokkan dari STB):'
-& 'C:\Windows\System32\OpenSSH\ssh-keygen.exe' -lf 'C:\ProgramData\ssh\ssh_host_ed25519_key.pub'
+& (Join-Path $SshDir 'ssh-keygen.exe') -lf 'C:\ProgramData\ssh\ssh_host_ed25519_key.pub'
 Write-Host ''
 Write-Host 'SELESAI. Beri tahu Claude Code untuk memverifikasi dari STB (Bagian A langkah 7).' -ForegroundColor Green

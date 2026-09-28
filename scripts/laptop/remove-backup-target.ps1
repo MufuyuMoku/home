@@ -7,7 +7,8 @@ Yang dilakukan:
   - Rule firewall HOME-backup-SSH-In dihapus; rule bawaan OpenSSH-Server-In-TCP dikembalikan
     ke kondisi awal.
   - Akun homebackup dan profilnya dihapus.
-  - OpenSSH Server di-uninstall kalau SEBELUMNYA memang belum terpasang.
+  - OpenSSH Server (fitur Windows) di-uninstall kalau SEBELUMNYA memang belum terpasang.
+    Kalau terpasang lewat MSI, sshd hanya dinonaktifkan dan diberi petunjuk uninstall lewat Apps.
   - Folder backup C:\HOME-backup TIDAK dihapus, kecuali diberi -RemoveBackupData (akan ditanya dulu).
 
 Cara menjalankan (PowerShell "Run as Administrator"):
@@ -28,6 +29,20 @@ $StateFile  = Join-Path $StateDir 'state.json'
 $SshdConfig = 'C:\ProgramData\ssh\sshd_config'
 $FwRuleName = 'HOME-backup-SSH-In'
 $FwDefault  = 'OpenSSH-Server-In-TCP'
+$InstallFile    = Join-Path $StateDir 'openssh-install.json'
+$FwDisabledFile = Join-Path $StateDir 'disabled-firewall-rules.json'
+
+function Get-SshdExe {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='sshd'" -ErrorAction SilentlyContinue
+    if (-not $svc -or -not $svc.PathName) { return $null }
+    if ($svc.PathName -match '^\s*"([^"]+)"') { return $Matches[1] }
+    if ($svc.PathName -match '^\s*(\S+\.exe)') { return $Matches[1] }
+    return $null
+}
+function Get-OpenSshCapability {
+    try { return (Get-WindowsCapability -Online -Name 'OpenSSH.Server*' -ErrorAction Stop | Select-Object -First 1) }
+    catch { return $null }
+}
 
 function Step($text) { Write-Host ''; Write-Host "=== $text ===" -ForegroundColor Cyan }
 function Info($text) { Write-Host "  $text" }
@@ -58,7 +73,14 @@ Step 'Firewall'
 if (Get-NetFirewallRule -Name $FwRuleName -ErrorAction SilentlyContinue) {
     Remove-NetFirewallRule -Name $FwRuleName; Info "Rule $FwRuleName dihapus."
 }
-if (Get-NetFirewallRule -Name $FwDefault -ErrorAction SilentlyContinue) {
+# Rule OpenSSH yang dimatikan oleh setup (tercatat) dinyalakan kembali.
+if (Test-Path $FwDisabledFile) {
+    foreach ($name in @(Get-Content $FwDisabledFile -Raw | ConvertFrom-Json)) {
+        if ($name -and (Get-NetFirewallRule -Name $name -ErrorAction SilentlyContinue)) {
+            Enable-NetFirewallRule -Name $name; Info "Rule $name dinyalakan kembali (dimatikan oleh setup)."
+        }
+    }
+} elseif (Get-NetFirewallRule -Name $FwDefault -ErrorAction SilentlyContinue) {
     if ($state.defaultRuleWasEnabled) { Enable-NetFirewallRule -Name $FwDefault; Info "$FwDefault diaktifkan lagi (seperti semula)." }
     else { Info "$FwDefault dibiarkan nonaktif (semula tidak ada/nonaktif)." }
 }
@@ -77,18 +99,35 @@ if (-not $state.userExisted) {
 }
 
 Step 'OpenSSH Server'
-if (-not $state.openSshServerWasInstalled) {
-    $cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
+$sshdExe = Get-SshdExe
+$isMsi = $sshdExe -and -not $sshdExe.StartsWith("$env:SystemRoot\System32", [StringComparison]::OrdinalIgnoreCase)
+if ($state.openSshServerWasInstalled) {
+    Info 'OpenSSH Server sudah ada sebelum setup; dibiarkan terpasang.'
+    Start-Service sshd -ErrorAction SilentlyContinue
+} elseif ($isMsi) {
+    # MSI (github.com/PowerShell/Win32-OpenSSH) tidak di-uninstall otomatis.
+    Set-Service -Name sshd -StartupType Disabled -ErrorAction SilentlyContinue
+    Write-Host "  OpenSSH terpasang lewat MSI ($sshdExe). Service sshd sudah dihentikan dan dinonaktifkan." -ForegroundColor Yellow
+    Write-Host '  Untuk meng-uninstall: Settings > Apps > Installed apps > cari "OpenSSH" > Uninstall.' -ForegroundColor Yellow
+} else {
+    $cap = Get-OpenSshCapability
     if ($cap -and $cap.State -eq 'Installed') {
-        Remove-WindowsCapability -Online -Name $cap.Name | Out-Null
-        Info 'OpenSSH Server di-uninstall (semula belum terpasang).'
+        try {
+            Remove-WindowsCapability -Online -Name $cap.Name -ErrorAction Stop | Out-Null
+            Info 'OpenSSH Server (fitur Windows) di-uninstall (semula belum terpasang).'
+        } catch {
+            Set-Service -Name sshd -StartupType Disabled -ErrorAction SilentlyContinue
+            Write-Host '  Uninstall otomatis gagal. sshd sudah dinonaktifkan. Uninstall manual:' -ForegroundColor Yellow
+            Write-Host '  Settings > System > Optional features > "OpenSSH Server" > Remove.' -ForegroundColor Yellow
+        }
+    } elseif (Get-Service sshd -ErrorAction SilentlyContinue) {
+        Set-Service -Name sshd -StartupType Disabled -ErrorAction SilentlyContinue
+        Write-Host '  Status fitur OpenSSH tidak terbaca. sshd sudah dinonaktifkan. Uninstall manual:' -ForegroundColor Yellow
+        Write-Host '  Settings > System > Optional features > "OpenSSH Server" > Remove.' -ForegroundColor Yellow
     }
     if (Get-NetFirewallRule -Name $FwDefault -ErrorAction SilentlyContinue) {
         Remove-NetFirewallRule -Name $FwDefault; Info "Rule $FwDefault dihapus."
     }
-} else {
-    Info 'OpenSSH Server sudah ada sebelum setup; dibiarkan terpasang.'
-    Start-Service sshd -ErrorAction SilentlyContinue
 }
 
 Step "Folder $BackupRoot"
