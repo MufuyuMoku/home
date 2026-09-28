@@ -38,6 +38,8 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 - **Dimatikan (stop + disable, TIDAK di-uninstall):** CasaOS (6 unit `casaos*`) + `rclone.service`, Samba (`smbd`, `nmbd`, `samba-ad-dc`), `rpcbind.service` + `rpcbind.socket`, `openvpn.service`. User `devmon` memakai shell `/usr/sbin/nologin`. `wpa_supplicant` sengaja dibiarkan (untuk USB WiFi). Cara menyalakan kembali ada di `docs/log.md`. Jangan dinyalakan lagi tanpa persetujuan klien.
 - **SSH hanya-key:** `config/etc/ssh/sshd_config.d/10-home.conf` → `PermitRootLogin prohibit-password`, `PasswordAuthentication no`. `sshd_config` utama tidak diubah. Setiap perubahan SSH: `sshd -t`, `reload` (bukan restart), dan uji koneksi baru sambil menjaga sesi lama tetap terbuka.
 - **Port terbuka ke jaringan:** hanya TCP 22. Firewall ditunda (dirancang bersama akses jarak jauh).
+- `/var/lib/containerd` di eMMC (sekitar 354 KB) **dibiarkan permanen** karena dipakai containerd (keputusan final, tidak perlu dilaporkan lagi).
+- **Persistent journal:** ditunda sampai setelah Fase 1, sebagai tugas tersendiri (usulan ada di `docs/log.md`). Journal saat ini masih volatile (RAM).
 - Backup file asli ada di STB: `/root/fase0/backup/`.
 
 ## Aturan mutlak
@@ -53,6 +55,13 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 9. **Jangan pernah mengaktifkan kembali repo Armbian beta** (`beta.armbian.com`) tanpa persetujuan klien.
 10. **Jangan melepas hold paket apa pun** (lihat daftar di "Kondisi paket & update") tanpa persetujuan klien. Hal yang sama berlaku untuk mengembalikan `update_initramfs=yes` atau menyalakan lagi update otomatis.
 11. **Slot SD STB tidak dipakai sama sekali.** Penyimpanan data hanya lewat card reader USB. Jangan memformat, me-mount, atau menulis ke `mmcblk1` (slot SD) walaupun ada kartu di sana.
+12. **Setiap perubahan konfigurasi SSH atau jaringan wajib memakai timer rollback otomatis** (selain persetujuan klien menurut aturan 2). Prosedurnya:
+    1. Backup/siapkan cara membatalkan (file yang akan dihapus atau dipulihkan).
+    2. Validasi dulu (misalnya `sshd -t`).
+    3. Sebelum menerapkan, pasang timer, misalnya `systemd-run --unit=home-rollback --on-active=10min /bin/sh -c '<perintah pembatalan> && systemctl reload <layanan>'`.
+    4. Terapkan dengan `reload` (bukan restart). Jaga satu sesi SSH lama tetap terbuka dan bisa menerima perintah.
+    5. Uji koneksi **baru** dari laptop.
+    6. Batalkan timer (`systemctl stop home-rollback.timer`) **hanya** setelah uji koneksi baru berhasil. Kalau gagal, biarkan timer berjalan atau batalkan perubahan lewat sesi lama.
 
 ## Cara kerja
 

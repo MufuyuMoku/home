@@ -232,3 +232,9 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Sesudah:** `is-system-running` = running. Ke-14 unit yang dimatikan (6 casaos, rclone, smbd, nmbd, samba-ad-dc, rpcbind service+socket, openvpn, devmon) inactive/disabled, tanpa proses tersisa. Shell devmon `/usr/sbin/nologin`. Port terbuka ke jaringan hanya TCP 22. `sshd -T`: `permitrootlogin without-password`, `passwordauthentication no`. Koneksi baru tanpa key → `Permission denied (publickey)`, server hanya menawarkan `publickey`. `/dev/sda1` hanya di `/mnt/data`. Docker root `/mnt/data/docker` overlay2. `ssh`/`NetworkManager`/`docker`/`containerd`/`wpa_supplicant` active. Hold 8, zona waktu Asia/Jakarta, `--failed` kosong, dmesg tanpa error I/O. Suhu 52 °C. eMMC 48%, `/mnt/data` 113 GB tersedia.
 - **RAM available:** **1503 MB** (sebelum langkah 1, saat CasaOS dkk. masih jalan) → **1650 MB** (setelah boot tanpa layanan itu), atau **+147 MB**. `used` 417 → 270 MB.
 - **CLAUDE.md** bagian "Kondisi" diperbarui (layanan yang dimatikan, SSH hanya-key, port terbuka).
+
+## 2026-09-28: Keputusan konsultan sebelum Fase 1
+
+- **Persistent journal:** ditunda sampai setelah Fase 1, dirancang dan diuji sebagai tugas tersendiri.
+- **`/var/lib/containerd`:** dibiarkan permanen (dipakai containerd). Keputusan final.
+- **Timer rollback otomatis** untuk setiap perubahan konfigurasi SSH atau jaringan ditetapkan sebagai prosedur standar, dan menjadi **aturan mutlak 12** di CLAUDE.md.
