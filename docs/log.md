@@ -260,3 +260,13 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Login awal:** `admin` / `admin` (default image, didokumentasikan; tidak ada password di repo). Log first-start: "Resetting admin user to default username and password". Setelah restart dengan database yang sudah ada, pesan itu **tidak** muncul lagi ("Using existing database"), sehingga password yang diganti klien tidak di-reset.
 - **Catatan untuk konsultan:** (1) log menunjukkan `SQL Journal Mode: OFF` (database SQLite tanpa jurnal, lebih rentan rusak kalau listrik putus saat menulis). (2) peringatan `cacheDir slow write speed detected: 18.54 MB/s` (microSD; hanya memengaruhi cache preview/upload).
 - **Repo:** `CLAUDE.md` tabel Fase 1 (+ catatan upstream tidak dipakai, cadangan SFTP), `README.md`, `services/homepage/config/services.yaml` (nama tampilan).
+- **Tes klien:** berhasil. Password admin sudah diganti oleh klien.
+
+## 2026-09-28: Tindak lanjut FileBrowser Quantum
+
+- **Sisa Filebrowser lama dihapus (izin klien):** `rm -rf /mnt/data/filebrowser` (config `settings.json` + `database/filebrowser.db`, 52K) dan `/opt/home/services/filebrowser` (compose, `.env`, `.env.example`). Tidak ada container yang memakainya.
+- **"SQL Journal Mode: OFF":** dokumentasi v1.5.x **tidak menyediakan** pengaturan mode jurnal (di v2 hanya ada `server.indexSqlConfig.walMode`, dan itu untuk database index). Tidak ada perubahan config. Hasil pemeriksaan file:
+  - `data/database.db` (akun, password, setelan) = **BoltDB** (magic `0xED0CDAED`), bukan SQLite. BoltDB memakai copy-on-write + fsync, sehingga dirancang tahan terhadap mati listrik.
+  - Satu-satunya SQLite adalah `data/tmp/sql/index_all.db` (index pencarian di folder cache). Mode jurnal OFF berlaku untuk file ini, dan isinya bisa dibangun ulang dari `/mnt/data/files`.
+  - **Risiko** terbatas pada database akun/setelan dan index. File di `/mnt/data/files` tidak terdampak. **Folder `/mnt/data/filebrowser-quantum/data` wajib masuk rancangan backup nanti.**
+- **Peringatan kecepatan cacheDir:** diterima konsultan, tidak ada tindakan.
