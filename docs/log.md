@@ -141,3 +141,16 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   `UUID=569f0d64-a5d7-48b1-9626-f2da7395efa2 /mnt/data ext4 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2`
   Verifikasi pertama melaporkan 1 error karena `/mnt/data` belum dibuat (urutan script salah, belum ada yang di-mount). Setelah `mkdir /mnt/data` + `systemctl daemon-reload`: `findmnt --verify` 0 error (2 warning `/dev/root` yang normal), `mount -a` exit 0.
 - **Tes:** `/mnt/data` root:root 755. File acak 4 MB ditulis, `sync`, drop caches, dibaca ulang → sha256 sama, lalu dihapus. dmesg tanpa error. Tersedia 113 GB.
+
+## 2026-09-28: Fase 0 poin 5 selesai, data-root Docker ke `/mnt/data/docker` (overlay2)
+
+- **Temuan:** Docker 29 di STB memakai *containerd image store* (`driver-type io.containerd.snapshotter.v1`), sehingga image disimpan di `/var/lib/containerd` (eMMC), bukan di `data-root`. Ada juga `/etc/systemd/system/docker.service.d/override.conf` bawaan (`DOCKER_MIN_API_VERSION=1.24`, kemungkinan dari installer CasaOS), yang **tidak disentuh**.
+- **Keputusan konsultan (pilihan a):** matikan containerd image store dan kembali ke `overlay2`, sehingga semua data Docker ada di `/mnt/data/docker`.
+- **Apa:**
+  1. `systemctl stop docker.socket docker`.
+  2. `rsync -aHAX /var/lib/docker/ /mnt/data/docker/` (chmod 710), lalu `mv /var/lib/docker /var/lib/docker.old` (cadangan, dihapus setelah uji reboot lulus).
+  3. `config/etc/docker/daemon.json` ditambah `"data-root": "/mnt/data/docker"` dan `"features": {"containerd-snapshotter": false}` (log-opts tetap). Divalidasi (`json.tool`, `dockerd --validate`) lalu dipasang. Backup sebelumnya: `/root/fase0/backup/daemon.json.pre-b4`.
+  4. Drop-in baru `config/etc/systemd/system/docker.service.d/10-home-requires-data.conf` → `/etc/systemd/system/docker.service.d/` dengan `[Unit] RequiresMountsFor=/mnt/data`, lalu `daemon-reload`. `systemctl show docker` → `RequiresMountsFor=/mnt/data`, dan DropInPaths memuat file baru + `override.conf`.
+  5. `systemctl start docker`. Script punya rollback otomatis kalau gagal (tidak terpakai).
+- **Verifikasi:** `docker info` → Docker Root Dir `/mnt/data/docker`, Storage Driver `overlay2` (Backing Filesystem extfs, `containerd-snapshotter=false` di journal). `hello-world` percobaan pertama gagal karena jaringan (`connection reset by peer` dari registry-1.docker.io; ping/DNS OK), dan percobaan kedua exit 0. Image masuk ke `/mnt/data/docker`. `/var/lib/containerd` (354265 B), `/var/lib/docker.old` (213053 B), dan pemakaian eMMC **tidak berubah** (selisih 0 byte). Image dihapus, sehingga image dan container 0.
+- **Repo:** `.gitattributes` ditambah `config/** eol=lf`.
