@@ -23,6 +23,10 @@ services:
       GITEA__server__SSH_PORT: "2222"
       GITEA__server__SSH_LISTEN_PORT: "22"
       GITEA__service__DISABLE_REGISTRATION: "true"
+      # Migrasi/mirror hanya dari GitHub. Allowlist eksplisit diperlukan karena DNS hotspot
+      # (DNS64) juga memberi alamat NAT64 64:ff9b::/96 yang ditolak aturan bawaan Gitea.
+      GITEA__migrations__ALLOWED_DOMAINS: "github.com,*.github.com"
+      GITEA__migrations__ALLOW_LOCALNETWORKS: "false"
     volumes:
       - /mnt/data/gitea:/data
       - /etc/localtime:/etc/localtime:ro
