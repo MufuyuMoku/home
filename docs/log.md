@@ -154,3 +154,16 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   5. `systemctl start docker`. Script punya rollback otomatis kalau gagal (tidak terpakai).
 - **Verifikasi:** `docker info` → Docker Root Dir `/mnt/data/docker`, Storage Driver `overlay2` (Backing Filesystem extfs, `containerd-snapshotter=false` di journal). `hello-world` percobaan pertama gagal karena jaringan (`connection reset by peer` dari registry-1.docker.io; ping/DNS OK), dan percobaan kedua exit 0. Image masuk ke `/mnt/data/docker`. `/var/lib/containerd` (354265 B), `/var/lib/docker.old` (213053 B), dan pemakaian eMMC **tidak berubah** (selisih 0 byte). Image dihapus, sehingga image dan container 0.
 - **Repo:** `.gitattributes` ditambah `config/** eol=lf`.
+
+## 2026-09-28: Uji reboot kedua (izin klien) dan penghapusan `/var/lib/docker.old`
+
+- **Sebelum:** uptime 23 menit, `findmnt --verify` 0 error (2 warning `/dev/root` yang normal), `/dev/sda1` di `/mnt/data`, `ssh`/`NetworkManager`/`docker`/`containerd`/`casaos-local-storage` active, devmon disabled, hold 8, `--failed` kosong, Docker root `/mnt/data/docker` overlay2.
+- **Reboot:** `systemctl reboot` pukul 17:57:23. Ping berhenti pada detik ke-10, **kembali pada detik ke-42**, **SSH pada detik ke-45**. `systemd-analyze`: 5,1 s + 27,2 s = 32,3 s.
+- **Sesudah:** `is-system-running` = running, boot_id baru. **`findmnt -S /dev/sda1` → hanya `/mnt/data`** (CasaOS tidak me-mount di tempat lain). dmesg: `EXT4-fs (sda1): mounted filesystem 569f0d64-…`, tanpa error. `mnt-data.mount` tercatat sebagai dependensi `docker.service`. Docker active dengan Root `/mnt/data/docker` dan Driver `overlay2`. devmon inactive/disabled, hold 8, zona waktu Asia/Jakarta, `--failed` kosong. RAM available 1,5 GiB, suhu 56 °C, eMMC 48%, `/mnt/data` 113 GB tersedia.
+- **Penghapusan (izin klien setelah uji reboot lulus):** `rm -rf /var/lib/docker.old` (288 KB, hanya metadata kosong). Sisa `/var/lib/containerd` (354 KB, dari image store lama) dibiarkan.
+
+## 2026-09-28: Fase 0 poin 6 diperbarui, CLAUDE.md / fase0.sh / README
+
+- **CLAUDE.md:** baris hardware data disk (card reader USB, slot SD tidak dipakai), aturan 5 (identifikasi TRAN=usb 100–130 GB), **aturan 11 baru: slot SD STB tidak dipakai sama sekali**, bagian "Kondisi" (Docker data-root/overlay2/drop-in, fstab kartu data, devmon, CasaOS/Samba/rpcbind belum diputuskan), serta poin 4–5 Fase 0 ditandai selesai.
+- **`scripts/fase0.sh`:** bagian 4 sekarang *memeriksa* kartu data (tidak ada mount dari `mmcblk1`, entri fstab `/mnt/data` ber-UUID + `nofail`, `findmnt --verify`, ter-mount dari filesystem `HOMEDATA` di disk USB). Format dan fstab tetap manual, dengan langkah di komentar. Bagian 5 memasang drop-in + `daemon.json`, menolak mengganti data-root kalau Docker lama sudah punya image/container, lalu memverifikasi root, overlay2, dan `RequiresMountsFor`. Uji: `bash -n` OK, dan bagian pemeriksaan 4 dan 5 dijalankan terpisah di STB → lolos. `fase0.sh` utuh tidak dijalankan.
+- **README.md:** status Fase 0 selesai, langkah bangun ulang disesuaikan (kartu data manual sebelum `fase0.sh`).

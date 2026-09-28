@@ -17,7 +17,7 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 | Perangkat | STB Fiberhome HG680P (Amlogic S905X, 4 core ARM64 Cortex-A53) |
 | RAM | ~1,88 GB (zram bawaan Armbian) |
 | Penyimpanan sistem | eMMC, root `/` 5,7 GB (sekitar setengah sudah terpakai) |
-| Penyimpanan data | microSD 128 GB (baru di-quick-format di Windows, belum dipakai) |
+| Penyimpanan data | microSD 128 GB lewat **card reader USB** (di USB hub) → `/dev/sdX`, ext4 label `HOMEDATA`, di `/mnt/data`. **Slot SD STB tidak dipakai** (flush gagal/I/O error di slot itu). |
 | OS | Armbian 25.8 rolling untuk `aml-s9xx-box`, basis Ubuntu noble, kernel 6.12.35-current-meson64 |
 | Jaringan | LAN 100 Mbps, dicolok langsung ke laptop Windows. Laptop membagikan jaringan lewat Windows ICS. STB = `192.168.137.202`, laptop = `192.168.137.1` |
 | Akses | `ssh stb` dari laptop (key auth, user root) |
@@ -32,6 +32,10 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 - **Initramfs dibekukan:** `update_initramfs=no` di `/etc/initramfs-tools/update-initramfs.conf`, supaya upgrade paket tidak membangun ulang `/boot/initrd.img-*` dan `/boot/uInitrd`.
 - **Update otomatis mati:** `/etc/apt/apt.conf.d/99home-no-auto-upgrades` men-set `APT::Periodic::Update-Package-Lists` dan `APT::Periodic::Unattended-Upgrade` ke `"0"` (aktifkan kembali dengan menghapus file itu). Update dilakukan manual lewat `scripts/update.sh`.
 - **Docker sudah terpasang** dari repo resmi `download.docker.com` (docker-ce + compose plugin) sebelum proyek dimulai.
+- **Docker:** `data-root` = `/mnt/data/docker`, storage driver `overlay2` (containerd image store dimatikan lewat `"features": {"containerd-snapshotter": false}`), log `json-file` 10m × 3. Sumber: `config/etc/docker/daemon.json`. Drop-in `config/etc/systemd/system/docker.service.d/10-home-requires-data.conf` (`RequiresMountsFor=/mnt/data`), sehingga Docker tidak menyala sebelum kartu data terpasang. `override.conf` di folder yang sama adalah bawaan (kemungkinan dari CasaOS); jangan diubah.
+- **Kartu data:** fstab `UUID=569f0d64-a5d7-48b1-9626-f2da7395efa2 /mnt/data ext4 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2`.
+- **devmon dimatikan** (`disable --now`). Disk hanya dipasang lewat fstab.
+- **Terpasang sebelum proyek (belum diputuskan):** CasaOS (6 layanan `casaos*` + `rclone.service`, dashboard di port 80), Samba, `rpcbind`. Lihat audit keamanan di `docs/log.md`. `casaos-local-storage` terbukti tidak me-mount kartu data (uji reboot 2026-09-28).
 - Backup file asli ada di STB: `/root/fase0/backup/`.
 
 ## Aturan mutlak
@@ -40,12 +44,13 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 2. **Jangan ubah konfigurasi jaringan atau SSH** (netplan, NetworkManager, `/etc/ssh/`, firewall) tanpa persetujuan klien. Jangan pernah mematikan `sshd`.
 3. **Setiap entri `/etc/fstab` wajib memakai `nofail`** dan dipasang berdasarkan UUID. Sebelum mengubah fstab, backup dulu, lalu verifikasi dengan `findmnt --verify` dan `mount -a` sebelum dianggap selesai.
 4. **Jangan reboot tanpa izin klien.** Sebelum reboot, pastikan fstab sudah terverifikasi.
-5. **Operasi destruktif butuh konfirmasi eksplisit dari klien** (format, hapus data, `docker system prune`, dan sejenisnya). Sebelum memformat, tampilkan `lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL` dan identifikasi microSD dari ukurannya (~119 GB). **eMMC (~7 GB) tidak boleh disentuh.**
+5. **Operasi destruktif butuh konfirmasi eksplisit dari klien** (format, hapus data, `docker system prune`, dan sejenisnya). Sebelum memformat, tampilkan `lsblk -o NAME,SIZE,TYPE,TRAN,MODEL,MOUNTPOINT` dan identifikasi kartu data: `TRAN=usb`, ukuran 100–130 GB, tidak ter-mount. **eMMC (`mmcblk2`, ~7 GB) tidak boleh disentuh.**
 6. **RAM terbatas.** Setiap container wajib diberi batas memori (`mem_limit`). Periksa `free -h` sebelum dan sesudah memasang layanan baru. Hanya pakai image yang mendukung `linux/arm64`.
 7. **Tidak ada rahasia di repo.** Password dan token disimpan di file `.env` (masuk `.gitignore`); yang di-commit hanya `.env.example`.
 8. **Tidak ada yang diekspos ke internet.** Semua layanan hanya untuk jaringan lokal.
 9. **Jangan pernah mengaktifkan kembali repo Armbian beta** (`beta.armbian.com`) tanpa persetujuan klien.
 10. **Jangan melepas hold paket apa pun** (lihat daftar di "Kondisi paket & update") tanpa persetujuan klien. Hal yang sama berlaku untuk mengembalikan `update_initramfs=yes` atau menyalakan lagi update otomatis.
+11. **Slot SD STB tidak dipakai sama sekali.** Penyimpanan data hanya lewat card reader USB. Jangan memformat, me-mount, atau menulis ke `mmcblk1` (slot SD) walaupun ada kartu di sana.
 
 ## Cara kerja
 
@@ -72,8 +77,8 @@ Kerjakan berurutan, dan laporkan ke klien setelah setiap poin.
 1. **Inventaris.** Jalankan `uname -a`, `cat /etc/os-release`, `lsblk`, `df -h`, `free -h`, `apt-mark showhold`, dan `zramctl`. Tulis hasilnya ke `docs/hardware.md`.
 2. **Update paket.** `apt update && apt upgrade` (paket kernel tetap tertahan). Pastikan ulang dengan `apt-mark showhold`.
 3. **Zona waktu** `Asia/Jakarta`.
-4. **microSD** (butuh konfirmasi klien sebelum format). Format ext4 dengan label `HOMEDATA`, pasang di `/mnt/data` via fstab dengan opsi `defaults,noatime,nofail`. Verifikasi sesuai aturan 3.
-5. **Docker (konfigurasi ulang).** Docker Engine + compose plugin sudah terpasang dari repo resmi; tidak perlu dipasang lagi. Pindahkan `data-root` dari `/var/lib/docker` ke `/mnt/data/docker` (eMMC terlalu kecil untuk image). Atur rotasi log di `daemon.json` (misalnya `max-size 10m`, `max-file 3`). Tes dengan `docker run --rm hello-world`.
+4. **Kartu data (microSD via card reader USB)** (butuh konfirmasi klien sebelum format). Tabel partisi GPT dengan 1 partisi penuh, `mkfs.ext4 -L HOMEDATA -m 1`, pasang di `/mnt/data` via fstab dengan opsi `defaults,noatime,nofail,x-systemd.device-timeout=10s`. Verifikasi sesuai aturan 3. *(Selesai 2026-09-28.)*
+5. **Docker (konfigurasi ulang).** Docker Engine + compose plugin sudah terpasang dari repo resmi; tidak perlu dipasang lagi. `data-root` di `/mnt/data/docker` dengan `overlay2` (containerd image store mati), rotasi log 10m × 3, dan drop-in `RequiresMountsFor=/mnt/data`. Tes dengan `docker run --rm hello-world`. *(Selesai 2026-09-28.)*
 6. Buat `scripts/fase0.sh` yang merangkum langkah 2–5, supaya bisa dijalankan ulang di STB baru (termasuk hold paket, mematikan repo beta, membekukan initramfs, dan mematikan update otomatis). Buat juga `scripts/update.sh` untuk update manual yang aman.
 
 **Checkpoint:** laporkan ke klien sebelum lanjut ke Fase 1.
