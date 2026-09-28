@@ -105,3 +105,27 @@ Format: tanggal, apa yang dilakukan, kenapa. Entri terbaru di bawah.
   Total sekitar 330 MB terkompresi (perkiraan 0,8–1 GB setelah diekstrak). Uptime Kuma memakai varian `-slim` (tanpa MariaDB/Chromium bawaan; versi penuh 574 MB).
 - **Keputusan desain:** Homepage tidak diberi `docker.sock` (setara akses root). Status layanan memakai `siteMonitor`. Gitea: SQLite, `DISABLE_REGISTRATION=true` (admin dibuat di halaman instalasi). Filebrowser berjalan sebagai UID 1000 (password admin awal ada di `docker logs`). Port dipublikasikan ke semua antarmuka STB, dan hanya bisa dijangkau dari LAN karena tidak ada router.
 - **Validasi:** semua file LF. `docker compose config --quiet` valid untuk keempatnya (dengan `--env-file .env.example`). YAML config Homepage bisa di-parse. Image/container di STB tetap 0.
+
+## 2026-09-28: Audit keamanan (hanya membaca, TIDAK ada yang diubah)
+
+Perintah: `ss -tlnp`, `ss -ulnp`, `systemctl list-units/list-unit-files`, `sshd -T`, `testparm -s`, dan pemakaian memori per unit.
+
+**Port yang terbuka ke jaringan (bukan hanya localhost):**
+
+| Port | Proses | Catatan |
+|---|---|---|
+| TCP 22 | sshd | dibutuhkan |
+| TCP 80 | `casaos-gateway` | **CasaOS** (dashboard home-server pihak ketiga, bukan bagian rancangan) |
+| TCP 139, 445 / UDP 137, 138 | `smbd`, `nmbd` (Samba) | tidak ada share selain printer bawaan; `map to guest = Bad User` |
+| TCP/UDP 111 | `rpcbind` | hanya dibutuhkan untuk NFS |
+
+Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
+
+**Temuan (usulan saja; keputusan di klien/konsultan):**
+1. **CasaOS terpasang dan berjalan**: 6 layanan `casaos*` + `rclone.service` (`rclone rcd` via unix socket dengan `--rc-no-auth`), memakai sekitar **320 MB RAM** (casaos-app-management 125, local-storage 64, message-bus 35, casaos 18, gateway 12, user-service 9, rclone 58). CasaOS bisa mengelola Docker dan disk (`casaos-local-storage` berpotensi **auto-mount disk USB**, mirip devmon), sehingga tumpang tindih dengan rancangan Project HOME. Dashboard-nya terbuka di port 80. Tidak dipasang lewat dpkg; config ada di `/etc/casaos/`.
+2. **Samba** (`smbd`, `nmbd`): tidak ada share data. Sepertinya tidak dibutuhkan.
+3. **`rpcbind`**: tidak ada NFS. Sepertinya tidak dibutuhkan.
+4. **SSH:** `PermitRootLogin yes` (eksplisit di `sshd_config:42`) dan `PasswordAuthentication yes` (default), sementara root punya password. Login password dari LAN masih mungkin. Usulan: key-only. **Butuh persetujuan (aturan 2)** dan harus diuji hati-hati.
+5. `unattended-upgrades.service` running: ini hanya penjaga saat shutdown. Dengan `APT::Periodic::Unattended-Upgrade "0"` tidak ada upgrade otomatis. Timer `apt-daily*` masih aktif, tapi keduanya membaca setelan `APT::Periodic` yang sudah 0.
+6. Lain-lain yang kemungkinan tidak dibutuhkan: `openvpn.service` (enabled, tidak running), `samba-ad-dc.service` (enabled, tidak running), `wpa_supplicant` (tidak ada WiFi dipakai), `vnstat` (statistik trafik, ringan 2 MB), user `devmon` dengan shell bash (sisa devmon).
+7. Tidak ada firewall aktif (`INPUT ACCEPT`). Sesuai aturan 2, firewall tidak disentuh tanpa persetujuan.
