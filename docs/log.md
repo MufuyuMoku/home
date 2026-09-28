@@ -175,3 +175,11 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Kenapa:** tidak ada di rancangan, tumpang tindih dengan Project HOME (mengelola Docker dan disk), dashboard terbuka di port 80, `rclone rcd --rc-no-auth`, dan memakai sekitar 320 MB RAM.
 - **Verifikasi:** ketujuh unit inactive/disabled, tidak ada proses casaos/rclone, **port 80 tidak dipakai**. File tetap ada (`/usr/bin/casaos*`, `/usr/bin/rclone`, `/etc/casaos/`, `override.conf`). Docker active, root `/mnt/data/docker` overlay2, `hello-world` OK (image dihapus lagi). `--failed` kosong. RAM available **1503 → 1641 MB**.
 - **Cara menyalakan kembali:** `systemctl enable --now rclone.service casaos-message-bus.service casaos-gateway.service casaos-user-service.service casaos-local-storage.service casaos-app-management.service casaos.service` (ingat: `casaos-local-storage` bisa me-mount disk USB).
+
+## 2026-09-28: Tindak lanjut audit (2): Samba, rpcbind, openvpn dimatikan; devmon nologin
+
+- **Apa:** `systemctl disable --now smbd.service nmbd.service samba-ad-dc.service rpcbind.service rpcbind.socket openvpn.service`. systemd juga menghapus symlink alias `smb.service`, `nmb.service`, `samba.service` di `/etc/systemd/system/` (bukan file unit). `usermod -s /usr/sbin/nologin devmon`.
+- **Kenapa:** Samba tidak punya share data, rpcbind hanya untuk NFS (tidak dipakai), dan openvpn tidak dipakai. User `devmon` adalah sisa devmon yang sudah dimatikan, jadi tidak perlu shell login.
+- **Tidak diubah:** `wpa_supplicant` (akan dipakai untuk USB WiFi).
+- **Verifikasi:** keenam unit inactive/disabled. `getent passwd devmon` → `/usr/sbin/nologin`. **Port yang terbuka ke jaringan sekarang hanya TCP 22 (ssh).** `--failed` kosong. RAM available 1641 → 1647 MB.
+- **Cara menyalakan kembali:** `systemctl enable --now <unit>` (untuk rpcbind: `rpcbind.socket` dan `rpcbind.service`). Shell devmon: `usermod -s /usr/bin/bash devmon`.
