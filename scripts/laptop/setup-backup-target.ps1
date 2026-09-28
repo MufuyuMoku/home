@@ -6,7 +6,7 @@ Yang dilakukan (bisa dijalankan ulang; langkah yang sudah beres dilewati):
   1. OpenSSH Server: kalau service sshd sudah ada (fitur Windows, Settings > Optional features,
      atau MSI resmi Win32-OpenSSH), dipakai apa adanya. Kalau belum, dipasang sebagai fitur
      Windows (butuh internet). Kalau gagal, script berhenti dan menjelaskan jalur lain.
-     Service sshd = Automatic.
+     Service sshd = Manual selama diatur, baru Automatic + dinyalakan di akhir script.
   2. Buat akun lokal standar "homebackup" (anggota Users, BUKAN admin). Password acak panjang
      dibuat di memori, TIDAK ditampilkan dan TIDAK disimpan (akun ini hanya login dengan key).
   3. Buat C:\HOME-backup\restic. Izin: hanya homebackup, SYSTEM, Administrators.
@@ -72,6 +72,17 @@ function Get-SshdExe {
 function Get-OpenSshCapability {
     try { return (Get-WindowsCapability -Online -Name 'OpenSSH.Server*' -ErrorAction Stop | Select-Object -First 1) }
     catch { return $null }
+}
+# Keanggotaan grup lewat `net localgroup` (nama grup diterjemahkan dari SID supaya tidak bergantung
+# bahasa Windows). Get-LocalGroupMember bisa error kalau grup berisi SID yatim.
+function Get-GroupName($sid) {
+    $acct = (New-Object System.Security.Principal.SecurityIdentifier($sid)).Translate([System.Security.Principal.NTAccount]).Value
+    return $acct.Split('\')[-1]
+}
+function Test-GroupMember($groupSid, $name) {
+    $out = & net localgroup (Get-GroupName $groupSid) 2>$null
+    if ($LASTEXITCODE -ne 0) { Stop-Setup "net localgroup gagal membaca grup $groupSid." }
+    return [bool]($out | Where-Object { $_.Trim() -ieq $name -or $_.Trim() -like "*\$name" })
 }
 function Get-UserProfileDir($name) {
     $sid = (Get-LocalUser -Name $name).SID.Value
@@ -147,7 +158,10 @@ if (-not (Test-Path $InstallFile)) {
     [pscustomobject]@{ recorded = (Get-Date).ToString('s'); method = $method; sshdExe = $SshdExe; msi = $isMsi } |
         ConvertTo-Json | Set-Content -Path $InstallFile -Encoding ASCII
 }
-Set-Service -Name sshd -StartupType Automatic
+# Selama diatur: Manual + berhenti. Baru diset Automatic di akhir, setelah sshd_config dan
+# firewall beres, supaya run yang terhenti di tengah tidak meninggalkan sshd yang otomatis
+# menyala dengan konfigurasi bawaan (login password aktif).
+Set-Service -Name sshd -StartupType Manual
 if (-not (Test-Path $SshdConfig)) {
     # Start pertama membuat sshd_config dan host key.
     Start-Service sshd
@@ -155,7 +169,7 @@ if (-not (Test-Path $SshdConfig)) {
 }
 Stop-Service sshd -ErrorAction SilentlyContinue
 if (-not (Test-Path $SshdConfig)) { Stop-Setup "$SshdConfig tidak terbentuk." }
-Info 'sshd: Automatic (dihentikan sementara untuk diatur).'
+Info 'sshd: Manual dan dihentikan selama diatur (Automatic di akhir script).'
 
 # --- 2. Akun homebackup -------------------------------------------------------
 Step "2. Akun lokal $UserName"
@@ -164,16 +178,17 @@ $secure = $null
 if (-not $user) {
     $secure = New-RandomSecurePassword
     New-LocalUser -Name $UserName -Password $secure -PasswordNeverExpires -UserMayNotChangePassword `
-        -AccountNeverExpires -Description 'Project HOME: target backup SFTP dari STB (hanya key)' | Out-Null
+        -AccountNeverExpires -Description 'Project HOME: backup SFTP dari STB (hanya key)' | Out-Null
     Info 'Akun dibuat. Password acak tidak ditampilkan/disimpan.'
 } else {
     Info 'Akun sudah ada.'
 }
-if (-not (Get-LocalGroupMember -SID $SidUsers | Where-Object { $_.Name -match "\\$UserName$" })) {
+if (-not (Test-GroupMember $SidUsers $UserName)) {
     Add-LocalGroupMember -SID $SidUsers -Member $UserName
     Info 'Ditambahkan ke grup Users (user standar).'
 }
-if (Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object { $_.Name -match "\\$UserName$" }) {
+if (-not (Test-GroupMember $SidUsers $UserName)) { Stop-Setup "$UserName gagal ditambahkan ke grup Users." }
+if (Test-GroupMember 'S-1-5-32-544' $UserName) {
     Stop-Setup "$UserName ternyata anggota Administrators. Periksa manual."
 }
 
@@ -291,6 +306,7 @@ Info "Terpasang: $akFile"
 
 # --- Selesai ------------------------------------------------------------------
 Step 'Menyalakan sshd'
+Set-Service -Name sshd -StartupType Automatic
 Start-Service sshd
 Get-Service sshd | Select-Object Name, Status, StartType | Format-Table -AutoSize | Out-String | Write-Host
 Write-Host 'Sidik jari host key laptop (untuk dicocokkan dari STB):'

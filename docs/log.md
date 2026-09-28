@@ -369,3 +369,14 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   - Firewall: semua rule inbound Allow yang aktif bernama/berlabel OpenSSH/sshd (selain `HOME-backup-SSH-In`) dimatikan dan namanya dicatat di `disabled-firewall-rules.json`.
 - **Perubahan `remove-backup-target.ps1`:** rule yang tercatat di `disabled-firewall-rules.json` dinyalakan kembali. OpenSSH dari **MSI tidak di-uninstall otomatis** (sshd dinonaktifkan + petunjuk Settings > Apps > Installed apps > OpenSSH > Uninstall). Fitur Windows di-uninstall seperti sebelumnya, dengan fallback petunjuk manual kalau `Remove-WindowsCapability` gagal.
 - **Uji:** parser PowerShell 0 error di kedua script, 0 non-ASCII. Regex jalur sshd diuji untuk format System32, `"C:\Program Files\OpenSSH\sshd.exe"`, dan dengan argumen.
+- Klien login GitHub dan push sendiri: `28283f9..bbb78a6`.
+
+## 2026-09-28: Backup A, run kedua gagal di langkah 2 (Description terlalu panjang) → diperbaiki
+
+- **Laporan klien:** langkah 1 lolos ("Service sshd sudah ada … pemasangan dilewati"), lalu langkah 2 gagal: `New-LocalUser -Description` 53 karakter (batas Windows 48). Validasi parameter gagal **sebelum** akun dibuat.
+- **Kondisi laptop setelah run itu (dibaca):** `sshd` Stopped tapi **Automatic**. `sshd_config` bawaan sudah terbentuk (PasswordAuthentication tidak diset, artinya default mengizinkan password). Rule `OpenSSH-Server-In-TCP` Enabled. Tidak ada listener port 22. `homebackup`/`C:\HOME-backup` belum ada. `openssh-install.json` tercatat `method: sudah-ada` (informatif; baseline yang dipakai tetap `state.json`, OpenSSH semula belum ada). Risiko: kalau laptop restart sebelum run ulang, sshd menyala dengan login password dan port 22 terbuka di semua jaringan.
+- **Perbaikan:**
+  - Description → `Project HOME: backup SFTP dari STB (hanya key)` (46 karakter).
+  - `sshd` diset **Manual** selama diatur, baru **Automatic + Start** di akhir script (setelah sshd_config dan firewall beres), sehingga run yang terhenti tidak meninggalkan sshd otomatis dengan konfigurasi bawaan.
+  - Cek keanggotaan grup lewat `net localgroup <nama dari SID>` (fungsi `Get-GroupName`/`Test-GroupMember`), menggantikan `Get-LocalGroupMember` yang bisa error kalau grup berisi SID yatim. Keanggotaan Users diverifikasi setelah ditambahkan.
+- **Uji (non-admin):** parser 0 error, 0 non-ASCII. Fungsi grup diuji: S-1-5-32-545 → `Users`, S-1-5-32-544 → `Administrators`, `sorar` ∈ Users/Administrators = True, `homebackup` ∈ Users = False.
