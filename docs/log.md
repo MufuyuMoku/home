@@ -270,3 +270,11 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   - Satu-satunya SQLite adalah `data/tmp/sql/index_all.db` (index pencarian di folder cache). Mode jurnal OFF berlaku untuk file ini, dan isinya bisa dibangun ulang dari `/mnt/data/files`.
   - **Risiko** terbatas pada database akun/setelan dan index. File di `/mnt/data/files` tidak terdampak. **Folder `/mnt/data/filebrowser-quantum/data` wajib masuk rancangan backup nanti.**
 - **Peringatan kecepatan cacheDir:** diterima konsultan, tidak ada tindakan.
+
+## 2026-09-28: Fase 1 layanan 2, Gitea (SQLite)
+
+- **Apa:** `/opt/home/services/gitea`: `.env` dari `.env.example` (`HOST_IP`, `PUID/PGID` 1000, `TZ`; tanpa rahasia, chmod 600, tidak di-commit). `mkdir /mnt/data/gitea`, lalu `docker compose up -d` (image `gitea/gitea:1.27.3`). Entrypoint image membuat `/data/{git,gitea}` milik UID 1000 dan `/data/ssh` (host key).
+- **Verifikasi:** `running`, restart 0, `unless-stopped`, `mem_limit` 384 MiB. HTTP `/` → 200 (halaman instalasi; `INSTALL_LOCK = false` sampai klien menyelesaikan instalasi). Port hanya `3002→3000` (web) dan `2222→22` (git SSH). Port 22 milik STB tidak terpengaruh. `ssh-keyscan -p 2222` → host key ecdsa/rsa/ed25519. Proses `gitea` berjalan sebagai user `git`.
+- **`app.ini` (hasil env):** `DB_TYPE = sqlite3`, `PATH = /data/gitea/gitea.db`, `DOMAIN = 192.168.137.202`, `ROOT_URL = http://192.168.137.202:3002/`, `SSH_PORT = 2222`, `SSH_LISTEN_PORT = 22`, `DISABLE_REGISTRATION = true`.
+- **RAM:** Gitea sekitar 91 MiB (idle, halaman instalasi). RAM available STB 1580 → 1444 MB. **Kartu data terpakai:** 59M → 350M (image Gitea).
+- **Akun admin:** dibuat oleh klien di halaman instalasi (bagian "Administrator Account Settings"). Tidak ada password di repo atau log.
