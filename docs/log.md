@@ -64,3 +64,13 @@ Format: tanggal, apa yang dilakukan, kenapa. Entri terbaru di bawah.
   - Setelah error, `blkid -p` tidak lagi menemukan tanda exFAT di `mmcblk1p1`, jadi kemungkinan sebagian penulisan sudah masuk.
   - Kartu: SDXC high-speed, `manfid 0x00009f`, `oemid 0x5449`, `name 00000`, tanggal 06/2023. Flag read-only 0.
 - **Status:** berhenti dan dilaporkan ke klien. fstab belum disentuh.
+- **Keputusan konsultan:** **poin 4 tertunda, menunggu hasil tes kartu.** Klien mencabut microSD dan mengetesnya di laptop dengan H2testw. `mmcblk1` tidak boleh disentuh sampai hasil tes dibawa kembali. Kalau hasilnya bersih, kartu yang sama kemungkinan dipakai lewat card reader USB (jalur penyimpanan USB, bukan slot SD), dengan rancangan fstab yang sama tapi device berbeda. Pemindahan `data-root` Docker (poin 5) ikut ditunda sampai poin 4 selesai.
+
+## 2026-09-28: Fase 0 poin 5 (sebagian), rotasi log Docker
+
+- **Apa:** memasang `/etc/docker/daemon.json` (sumber di repo: `config/etc/docker/daemon.json`, dikirim lewat `/opt/home/config/etc/docker/`) dengan `log-driver json-file`, `max-size 10m`, `max-file 3`. Sebelumnya file ini belum ada, jadi tidak ada yang perlu dibackup, dan log container tidak dibatasi.
+- **Kenapa:** tanpa batas, log container bisa terus membesar sampai eMMC penuh.
+- **Validasi:** file ber-LF, `python3 -m json.tool` → valid, `dockerd --validate` → `configuration OK`. `systemctl restart docker` → active.
+- **Tes:** `docker run --rm hello-world` → exit 0, "Hello from Docker!". Container baru terbukti memakai `{"Type":"json-file","Config":{"max-file":"3","max-size":"10m"}}` (dicek dengan `docker create` + `docker inspect`, lalu dihapus). Image `hello-world` dihapus, sehingga image dan container kembali 0. Percobaan pertama sempat terpotong (exit 141) karena output di-pipe ke `head`, dan tesnya diulang dengan benar.
+- **Repo:** `.gitattributes` ditambah `*.json eol=lf`.
+- **Ditunda:** pemindahan `data-root` ke `/mnt/data/docker` menunggu poin 4. Data-root masih `/var/lib/docker` (kosong). Root `/` 48%, RAM available 1,4 GiB.
