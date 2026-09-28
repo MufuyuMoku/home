@@ -129,3 +129,15 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 5. `unattended-upgrades.service` running: ini hanya penjaga saat shutdown. Dengan `APT::Periodic::Unattended-Upgrade "0"` tidak ada upgrade otomatis. Timer `apt-daily*` masih aktif, tapi keduanya membaca setelan `APT::Periodic` yang sudah 0.
 6. Lain-lain yang kemungkinan tidak dibutuhkan: `openvpn.service` (enabled, tidak running), `samba-ad-dc.service` (enabled, tidak running), `wpa_supplicant` (tidak ada WiFi dipakai), `vnstat` (statistik trafik, ringan 2 MB), user `devmon` dengan shell bash (sisa devmon).
 7. Tidak ada firewall aktif (`INPUT ACCEPT`). Sesuai aturan 2, firewall tidak disentuh tanpa persetujuan.
+
+## 2026-09-28: Fase 0 poin 4 dilanjutkan, kartu data via card reader USB
+
+- **Hasil tes kartu (klien, H2testw di laptop):** 118875 MB ditulis dan diverifikasi tanpa error. Kartu asli dan sehat, jadi error flush sebelumnya berasal dari **slot SD STB**.
+- **Keputusan konsultan:** data disk tetap microSD yang sama, tapi lewat **card reader USB (di USB hub)**. Slot SD STB tidak dipakai sama sekali.
+- **Identifikasi:** `/dev/sda`, TRAN `usb`, "Generic STORAGE DEVICE", 124,7 GB (243.472.384 sektor dan ID tabel partisi `8e622ce8`, sama dengan kartu saat di slot SD). Tidak ter-mount, dmesg bersih. Klien mengonfirmasi eksplisit: "format /dev/sda".
+- **CasaOS (pilihan a):** `systemctl stop casaos-local-storage` (tanpa disable) selama format dan fstab, lalu `start` lagi setelah tes tulis-baca. Setelah dinyalakan, `findmnt -S /dev/sda1` hanya menunjukkan `/mnt/data`.
+- **Format** (pengaman: TRAN=usb, ukuran 100–130 GB, tidak ada partisi ter-mount): `wipefs -a /dev/sda1`, `wipefs -a /dev/sda`, `sfdisk` membuat GPT dengan 1 partisi penuh "Linux filesystem", `mkfs.ext4 -F -L HOMEDATA -m 1 /dev/sda1` → UUID `569f0d64-a5d7-48b1-9626-f2da7395efa2`. dmesg tanpa error. (Satu baris pemeriksaan tambahan di script salah sintaks (`[: too many arguments`) dan tidak berefek karena `|| true`. Pengaman utama tetap berjalan.)
+- **fstab:** backup di `/root/fase0/backup/fstab` (asli) dan `fstab.<timestamp>`. Baris baru:
+  `UUID=569f0d64-a5d7-48b1-9626-f2da7395efa2 /mnt/data ext4 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2`
+  Verifikasi pertama melaporkan 1 error karena `/mnt/data` belum dibuat (urutan script salah, belum ada yang di-mount). Setelah `mkdir /mnt/data` + `systemctl daemon-reload`: `findmnt --verify` 0 error (2 warning `/dev/root` yang normal), `mount -a` exit 0.
+- **Tes:** `/mnt/data` root:root 755. File acak 4 MB ditulis, `sync`, drop caches, dibaca ulang → sha256 sama, lalu dihapus. dmesg tanpa error. Tersedia 113 GB.
