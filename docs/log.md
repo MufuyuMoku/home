@@ -54,3 +54,13 @@ Format: tanggal, apa yang dilakukan, kenapa. Entri terbaru di bawah.
   - `systemd-analyze`: 5,2 s (kernel) + 27,5 s (userspace) = 32,7 s.
 - **Sesudah:** uptime ter-reset (boot_id berubah), kernel tetap `6.12.35-current-meson64`, `ssh`/`NetworkManager`/`docker` active, hold tetap 8 paket, zona waktu `Asia/Jakarta (WIB, +0700)`, `is-system-running` = `running`, `systemctl --failed` kosong. RAM available 1,5 GiB, suhu 57 °C.
 - **Catatan:** setelah reboot microSD tidak ter-mount. `devmon` aktif, tapi hanya memasang media saat kartu dicolok (hotplug), tidak saat boot. Tidak berpengaruh, karena devmon akan dimatikan di poin 4.
+
+## 2026-09-28: Fase 0 poin 4, microSD (TERHENTI karena I/O error)
+
+- **Identifikasi:** microSD = `/dev/mmcblk1` (116,1 GiB, jenis kernel `SD`, 1 partisi exFAT `Moku`, tidak ter-mount). eMMC = `/dev/mmcblk2` (7,3 GiB, jenis `MMC`), tidak disentuh. Klien mengonfirmasi eksplisit: "format /dev/mmcblk1p1". Kode tipe partisi dibiarkan (7).
+- **Langkah 1 (selesai):** `systemctl disable --now devmon@devmon.service`, sehingga devmon inactive + disabled. Tidak ada mount di `/media/devmon`. Tersisa folder kosong `/media/devmon/{BOOT,Moku}`, dibiarkan.
+- **Langkah 2 (GAGAL):** `wipefs -a /dev/mmcblk1p1` → `failed to erase exfat magic string at offset 0x00000003: Input/output error`. `mkfs` tidak dijalankan.
+  - dmesg: `I/O error, dev mmcblk1, sector 0 op 0x1:(WRITE) flags 0x800 phys_seg 0`. Artinya yang gagal adalah permintaan *flush* (mengosongkan cache kartu), bukan penulisan data biasa.
+  - Setelah error, `blkid -p` tidak lagi menemukan tanda exFAT di `mmcblk1p1`, jadi kemungkinan sebagian penulisan sudah masuk.
+  - Kartu: SDXC high-speed, `manfid 0x00009f`, `oemid 0x5449`, `name 00000`, tanggal 06/2023. Flag read-only 0.
+- **Status:** berhenti dan dilaporkan ke klien. fstab belum disentuh.
