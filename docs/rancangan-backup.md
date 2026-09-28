@@ -13,7 +13,7 @@ Isi layanan di kartu data harus bisa dipulihkan kalau kartu rusak, file terhapus
 | Hal | Keputusan |
 |---|---|
 | Alat | **restic**, dari repo Ubuntu (apt) di STB |
-| Tujuan | Laptop Windows lewat **SFTP** (OpenSSH Server bawaan Windows) |
+| Tujuan | Laptop Windows lewat **SFTP** (OpenSSH Server bawaan Windows). restic memakai **backend rclone** (`rclone:laptop-backup:/restic`), bukan backend `sftp:` langsung. Lihat "Perubahan backend" di bawah. |
 | Folder di laptop | `C:\HOME-backup\` (repo restic di `C:\HOME-backup\restic`) |
 | Yang dibackup | Seluruh `/mnt/data` **kecuali** `/mnt/data/docker` (image bisa diunduh ulang) dan folder cache/index FileBrowser Quantum (`tmp/`) |
 | Konsistensi | Container yang punya database (Gitea, Uptime Kuma, FileBrowser Quantum) di-**stop** selama snapshot, lalu dinyalakan lagi. Homepage tidak perlu di-stop. |
@@ -62,7 +62,7 @@ Sediakan juga script kebalikannya, `scripts/laptop/remove-backup-target.ps1`, un
    install -d -m 700 /root/.config/restic && read -rs P && printf '%s' "$P" > /root/.config/restic/password && chmod 600 /root/.config/restic/password && unset P
    ```
    ⚠️ Password ini **wajib** disimpan klien di password manager. Kalau hilang, backup tidak bisa dibaca oleh siapa pun, termasuk klien sendiri.
-4. `restic init` ke `sftp:laptop-backup:/restic`.
+4. `restic init` ke ~~`sftp:laptop-backup:/restic`~~ **`rclone:laptop-backup:/restic`** (lihat "Perubahan backend").
 5. Script `scripts/backup.sh` (disalin ke `/opt/home/scripts/`). Urutannya:
    - cek kartu data ter-mount dan laptop terjangkau; kalau tidak, keluar dengan status "dilewati", bukan gagal,
    - stop container database → `restic backup` dengan daftar exclude → start container lagi (**selalu** dinyalakan kembali, termasuk saat backup gagal: gunakan `trap`),
@@ -80,6 +80,13 @@ Sediakan juga script kebalikannya, `scripts/laptop/remove-backup-target.ps1`, un
 2. Buat file uji di `/mnt/data/files`, jalankan backup, hapus file itu, lalu **pulihkan** dari snapshot. Isinya harus identik (checksum).
 3. Pulihkan snapshot terbaru secara utuh ke `/mnt/data/restore-test/`. Bandingkan jumlah file dan checksum dengan aslinya (untuk container yang di-stop), jalankan `PRAGMA integrity_check` pada setiap database SQLite hasil pulihan, lalu hapus `restore-test`.
 4. Tulis `docs/restore.md`: langkah memulihkan satu file, satu layanan, dan seluruh kartu data ke kartu baru. Bahasanya harus bisa diikuti klien sendiri.
+
+## Perubahan backend (2026-09-29, keputusan konsultan: pilihan B)
+
+- **Masalah:** backend `sftp:` restic gagal di `restic init` dengan `"Bad message" (SSH_FX_BAD_MESSAGE)`. Setelah membuat file, restic selalu memanggil `f.Chmod(0600)` (SFTP `FSETSTAT` lewat handle). Di OpenSSH Windows dengan `ChrootDirectory`, FSETSTAT menerapkan chroot dua kali ke jalur file, dan server membalas "Bad message". Bug yang dikenal: **PowerShell/Win32-OpenSSH#2263** (masih terbuka). restic versi terbaru tetap melakukan chmod ini tanpa pengecualian.
+- **Keputusan:** restic memakai **backend rclone**: `restic -r rclone:laptop-backup:/restic`. rclone (dari apt Ubuntu) tersambung ke laptop lewat SFTP dengan key yang sama, dan tidak pernah memakai FSETSTAT. **Chroot di laptop tetap dipakai, dan laptop tidak diubah.**
+- **Remote rclone** `laptop-backup` di `/root/.config/rclone/rclone.conf` (600; contoh tanpa rahasia di `config/root/.config/rclone/rclone.conf.example`): `key_file /root/.ssh/backup_ed25519`, `known_hosts_file /root/.ssh/known_hosts` (host key diverifikasi), `shell_type none` + `disable_hashcheck true` (laptop hanya SFTP), `set_modtime false` (tidak mengubah atribut file di laptop; dampaknya tanggal file repo = waktu upload, dan restic tidak memakainya).
+- **rclone bawaan CasaOS** (`/usr/bin/rclone` v1.61.1, tidak dimiliki paket) disimpan di `/root/fase0/backup/rclone-casaos-v1.61.1` sebelum ditimpa paket apt `rclone`.
 
 ## Aturan tambahan untuk CLAUDE.md
 

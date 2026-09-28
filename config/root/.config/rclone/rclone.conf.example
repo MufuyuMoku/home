@@ -1,0 +1,20 @@
+# Project HOME: remote rclone untuk backup restic ke laptop (lihat docs/rancangan-backup.md).
+# Lokasi di STB: /root/.config/rclone/rclone.conf (izin 600). Tidak berisi rahasia:
+# autentikasi memakai key /root/.ssh/backup_ed25519 (key TIDAK ada di repo).
+#
+# restic memakai remote ini lewat backend rclone:  restic -r rclone:laptop-backup:/restic ...
+# (backend sftp restic langsung tidak bisa dipakai: bug PowerShell/Win32-OpenSSH#2263,
+#  FSETSTAT + ChrootDirectory -> "Bad message").
+[laptop-backup]
+type = sftp
+host = 192.168.137.1
+user = homebackup
+key_file = /root/.ssh/backup_ed25519
+# Verifikasi host key laptop (sidik jari dicocokkan 2026-09-29, lihat docs/log.md).
+known_hosts_file = /root/.ssh/known_hosts
+# Laptop hanya mengizinkan SFTP (ForceCommand internal-sftp): jangan coba perintah shell.
+shell_type = none
+disable_hashcheck = true
+# Jangan ubah atribut file di laptop (hindari SETSTAT/FSETSTAT di OpenSSH Windows + chroot).
+# Dampak: tanggal file repo di laptop = waktu upload; restic tidak memakainya.
+set_modtime = false
