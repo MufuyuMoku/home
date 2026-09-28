@@ -431,3 +431,11 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   - Tidak ada pola `| grep -q`. `bash -n` OK. Uji: mode salah → pesan pemakaian (exit 2); `check` pada repo kosong → no errors, exit 0, cache di `/mnt/data/.restic-cache`.
 - **B6: unit** di `config/etc/systemd/system/` → `/etc/systemd/system/`: `home-backup.service` (oneshot, `backup.sh backup`, Nice 10, IO idle, After network-online/docker/mnt-data), `home-backup.timer` (`OnCalendar 20:00` WIB + `OnBootSec 10min`, `Persistent=true`), `home-check.service` (`backup.sh check`), `home-check.timer` (`Sun 21:00`, Persistent). `systemd-analyze verify` OK. **Timer belum diaktifkan**, menunggu uji pemulihan (Bagian C) lulus.
 - Sisa cache restic uji manual di eMMC (`/root/.cache/restic`, 96K) dihapus.
+
+## 2026-09-29: Backup B7 (monitor Push, klien) + Bagian C langkah 1 (backup pertama)
+
+- **B7 (klien):** monitor Push "Backup harian" di Uptime Kuma, interval 93600 s (26 jam), retries 0. Push URL disimpan klien sendiri lewat `read -rs` ke `/root/.config/restic/push-url` (600 root:root, 93 byte, format `http://192.168.137.202:3001/api/push/…`; dicek tanpa menampilkan isi). Tidak ada di repo atau log.
+- **Backup pertama** (`systemctl start home-backup.service`, 16 s): stop gitea/uptime-kuma/filebrowser-quantum → snapshot `20d2e48f` (72 file, 2,879 MiB → 218 KiB tersimpan) → ketiganya start lagi → forget (1 snapshot dipertahankan). Result=success. **Tetapi push gagal:** Uptime Kuma sendiri ikut di-stop dan baru menyala 5 s saat push dikirim.
+- **Perbaikan `backup.sh`:** push dicoba ulang maksimal 12× dengan jeda 10 s (sekitar 2 menit). Ukuran repo ditampilkan dalam MB.
+- **Backup kedua** (37 s): snapshot `71c9ad72` (2 new, 13 changed, 57 unmodified), repo 0,3 MB, **status `up` terkirim pada percobaan ke-3**. Monitor "Backup harian" → **UP** (`OK-0.3MB`, dibaca read-only dari `kuma.db`). Keempat container Up/healthy.
+- Ukuran data yang di-backup (`/mnt/data` tanpa docker/cache): sekitar 5,5 MB.

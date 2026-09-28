@@ -43,11 +43,17 @@ push() {
   [ -s "$PUSH_URL_FILE" ] || { log "PERINGATAN: $PUSH_URL_FILE belum ada, status tidak dikirim"; return 0; }
   url=$(head -n1 "$PUSH_URL_FILE"); base=${url%%\?*}
   msg=$(printf '%s' "$msg" | tr -c 'A-Za-z0-9._-' '-')
-  if curl -fsS -m 15 -o /dev/null "$base?status=$status&msg=$msg&ping=" 2>/dev/null; then
-    log "status '$status' terkirim ke Uptime Kuma"
-  else
-    log "PERINGATAN: gagal mengirim status ke Uptime Kuma"
-  fi
+  # Uptime Kuma ikut di-stop selama snapshot; setelah start ia butuh beberapa puluh detik
+  # sebelum siap menerima push. Coba ulang sampai sekitar 2 menit.
+  local i
+  for i in $(seq 1 12); do
+    if curl -fsS -m 15 -o /dev/null "$base?status=$status&msg=$msg&ping=" 2>/dev/null; then
+      log "status '$status' terkirim ke Uptime Kuma (percobaan ke-$i)"
+      return 0
+    fi
+    sleep 10
+  done
+  log "PERINGATAN: gagal mengirim status ke Uptime Kuma"
 }
 
 start_stopped() {
@@ -126,12 +132,13 @@ fi
 repo_bytes=$(rclone size --json "$RCLONE_REMOTE" 2>/dev/null | jq -r '.bytes // empty' || true)
 [[ "$repo_bytes" =~ ^[0-9]+$ ]] || fail "ukuran repo tidak bisa dibaca"
 repo_gb=$(awk -v b="$repo_bytes" 'BEGIN { printf "%.2f", b / 1e9 }')
-log "ukuran repo: ${repo_gb} GB (batas 15 GB)"
+repo_mb=$(awk -v b="$repo_bytes" 'BEGIN { printf "%.1f", b / 1e6 }')
+log "ukuran repo: ${repo_mb} MB (batas 15 GB)"
 if [ "$repo_bytes" -gt "$MAX_REPO_BYTES" ]; then
   echo "[home-backup] PERINGATAN: repo ${repo_gb} GB melebihi batas 15 GB" >&2
   push down "repo-${repo_gb}GB-melebihi-15GB"
   exit 2
 fi
 
-push up "OK-${repo_gb}GB"
+push up "OK-${repo_mb}MB"
 log "backup selesai"
