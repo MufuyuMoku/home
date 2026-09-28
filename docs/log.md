@@ -238,3 +238,13 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Persistent journal:** ditunda sampai setelah Fase 1, dirancang dan diuji sebagai tugas tersendiri.
 - **`/var/lib/containerd`:** dibiarkan permanen (dipakai containerd). Keputusan final.
 - **Timer rollback otomatis** untuk setiap perubahan konfigurasi SSH atau jaringan ditetapkan sebagai prosedur standar, dan menjadi **aturan mutlak 12** di CLAUDE.md.
+
+## 2026-09-28: Fase 1 layanan 1, Filebrowser
+
+- **Apa:** `/opt/home/services/filebrowser`: `.env` dari `.env.example` (hanya `TZ`, chmod 600, tidak di-commit). Folder `/mnt/data/files`, `/mnt/data/filebrowser/{database,config}` dibuat dengan pemilik UID/GID 1000 (di host GID 1000 bernama `devmon`; hanya nama). `docker compose up -d` (image `filebrowser/filebrowser:v2.63.23`).
+- **Volume:** hanya `/mnt/data/files` → `/srv` sebagai data, ditambah `database` dan `config` miliknya sendiri. **Tidak** seluruh `/mnt/data`.
+- **Verifikasi:** `running`, health `healthy`, `restart=unless-stopped`, `mem_limit` 128 MiB (pakai sekitar 14 MiB). Proses berjalan sebagai `uid=1000(user)`. Port: hanya `8080 → 80` (ditambah 22 yang sudah ada).
+- **Password admin awal:** dibuat acak oleh Filebrowser dan hanya ada di `docker logs filebrowser`. **Tidak ditulis ke repo atau log ini.** Klien login sebagai `admin` lalu menggantinya.
+- **RAM available:** 1677 → 1612 MB. **Kartu data terpakai:** 472K → 37M.
+- **TEMUAN, perlu keputusan konsultan:** log Filebrowser menyatakan *"File Browser is being wound down. The project is archived on 2026-09-01, after which there will be no further releases and no security fixes. Known unfixed issues are at https://github.com/filebrowser/filebrowser/security/advisories"*. Tetap dipasang sesuai rancangan (hanya LAN, tidak diekspos), menunggu keputusan apakah dipertahankan atau diganti.
+- **Catatan kecil:** stempel waktu log container dalam UTC (image kemungkinan tidak membawa data zona waktu). Tidak berpengaruh ke fungsi.
