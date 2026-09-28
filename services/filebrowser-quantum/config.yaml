@@ -1,0 +1,9 @@
+# FileBrowser Quantum v1.5.x (lihat filebrowserquantum.com, "Configuration Files (v1.5.x)").
+# Tidak ada password di sini. Password admin diganti klien lewat UI.
+server:
+  cacheDir: /home/filebrowser/data/tmp
+  sources:
+    - path: /folder
+      name: files
+      config:
+        defaultEnabled: true

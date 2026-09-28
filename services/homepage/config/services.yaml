@@ -8,7 +8,7 @@
         href: http://192.168.137.202:3002
         description: Server Git pribadi
         siteMonitor: http://192.168.137.202:3002
-    - Filebrowser:
+    - FileBrowser Quantum:
         href: http://192.168.137.202:8080
         description: File manager /mnt/data/files
         siteMonitor: http://192.168.137.202:8080

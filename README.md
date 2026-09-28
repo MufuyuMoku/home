@@ -31,7 +31,7 @@ flashing ulang. Karena itu kernel, DTB, bootloader, `/boot`, jaringan, dan SSH t
 | Homepage | Dashboard: link ke semua layanan + CPU/RAM/suhu | http://192.168.137.202:3000 | disiapkan |
 | Uptime Kuma | Monitoring hidup/matinya layanan | http://192.168.137.202:3001 | disiapkan |
 | Gitea (SQLite) | Server Git pribadi, mirror repo GitHub | http://192.168.137.202:3002, SSH port 2222 | disiapkan |
-| Filebrowser | File manager web untuk `/mnt/data/files` | http://192.168.137.202:8080 | disiapkan |
+| FileBrowser Quantum | File manager web untuk `/mnt/data/files` | http://192.168.137.202:8080 | berjalan |
 
 Setiap layanan ada di `services/<nama>/compose.yaml`, dengan image yang versinya di-pin (semuanya arm64),
 `mem_limit`, `restart: unless-stopped`, dan data di `/mnt/data/<nama>/`.

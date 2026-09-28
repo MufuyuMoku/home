@@ -103,7 +103,9 @@ Pasang satu per satu. Setelah setiap layanan terpasang, klien mengetesnya dari b
 | Homepage (gethomepage) | Dashboard beranda: link ke semua layanan + status CPU/RAM/suhu | 3000 |
 | Uptime Kuma | Monitoring hidup/matinya layanan | 3001 |
 | Gitea (SQLite) | Server Git pribadi, mirror repo GitHub | 3002 (web), 2222 (ssh) |
-| Filebrowser | File manager web untuk `/mnt/data/files` | 8080 |
+| FileBrowser Quantum (`ghcr.io/gtsteffaniak/filebrowser`, varian `-slim`) | File manager web untuk `/mnt/data/files` (volume data HANYA folder itu, jangan pernah seluruh `/mnt/data`) | 8080 |
+
+> Filebrowser upstream (`filebrowser/filebrowser`) **tidak dipakai**: proyeknya diarsipkan 2026-09-01 dan tidak menerima patch keamanan lagi. Kalau FileBrowser Quantum tidak memadai, rencana cadangannya adalah tanpa file manager web dan transfer file lewat SFTP.
 
 - Setiap layanan: `services/<nama>/compose.yaml`, `mem_limit`, `restart: unless-stopped`, data di `/mnt/data/<nama>/`.
 - Homepage: daftarkan semua layanan di atas. Perhatikan pengaturan host yang diizinkan (`HOMEPAGE_ALLOWED_HOSTS`) supaya bisa diakses lewat IP.

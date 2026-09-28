@@ -1,0 +1,21 @@
+# FileBrowser Quantum: file manager web untuk /mnt/data/files.
+# Pengganti Filebrowser upstream (diarsipkan 2026-09-01, tanpa patch keamanan).
+# Varian -slim: tanpa ffmpeg (tidak ada preview/thumbnail video), lebih hemat RAM dan disk.
+# Berjalan sebagai UID:GID 1000:1000; kedua folder di bawah harus dimiliki 1000:1000.
+# Deploy: salin config.yaml ke /mnt/data/filebrowser-quantum/data/, lalu `docker compose up -d`.
+# Login awal: admin / admin (bawaan image). Ganti SEGERA saat login pertama.
+name: filebrowser-quantum
+
+services:
+  filebrowser-quantum:
+    image: ghcr.io/gtsteffaniak/filebrowser:1.5.6-stable-slim
+    container_name: filebrowser-quantum
+    restart: unless-stopped
+    mem_limit: 192m
+    ports:
+      - "8080:80"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /mnt/data/files:/folder
+      - /mnt/data/filebrowser-quantum/data:/home/filebrowser/data
