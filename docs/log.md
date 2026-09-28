@@ -380,3 +380,21 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   - `sshd` diset **Manual** selama diatur, baru **Automatic + Start** di akhir script (setelah sshd_config dan firewall beres), sehingga run yang terhenti tidak meninggalkan sshd otomatis dengan konfigurasi bawaan.
   - Cek keanggotaan grup lewat `net localgroup <nama dari SID>` (fungsi `Get-GroupName`/`Test-GroupMember`), menggantikan `Get-LocalGroupMember` yang bisa error kalau grup berisi SID yatim. Keanggotaan Users diverifikasi setelah ditambahkan.
 - **Uji (non-admin):** parser 0 error, 0 non-ASCII. Fungsi grup diuji: S-1-5-32-545 → `Users`, S-1-5-32-544 → `Administrators`, `sorar` ∈ Users/Administrators = True, `homebackup` ∈ Users = False.
+- Klien push sendiri: `bbb78a6..801e738`.
+
+## 2026-09-29: Backup A selesai (run ketiga oleh klien) + verifikasi dari STB (A7)
+
+- **Run ketiga (klien, Administrator):** langkah 1–6 semuanya berhasil.
+  - sshd sudah ada, sehingga pemasangan dilewati.
+  - Akun `homebackup` dibuat, masuk grup Users, profil `C:\Users\homebackup`.
+  - ACL: `C:\HOME-backup` = homebackup (RX), Administrators/SYSTEM (OI)(CI)(F). `C:\HOME-backup\restic` = homebackup (OI)(CI)(M), Administrators/SYSTEM (F).
+  - `sshd_config.orig` dibackup, `sshd -t` lolos.
+  - Firewall: `OpenSSH-Server-In-TCP` → False, `HOME-backup-SSH-In` → True, RemoteAddress `192.168.137.0/255.255.255.0`.
+  - authorized_keys: homebackup (R), Administrators/SYSTEM (F).
+  - sshd Running/Automatic, listen 0.0.0.0/:: port 22.
+  - **Bug:** baris terakhir (tampilkan sidik jari) gagal. `$sshDir` (folder `.ssh` homebackup) menimpa `$SshDir` (folder program OpenSSH), karena nama variabel PowerShell tidak peka huruf besar/kecil. Diperbaiki (`$userSshDir`). Parser: tidak ada lagi variabel dengan beberapa cara penulisan. Tidak ada pengaturan yang terdampak.
+- **Host key laptop:** file `.pub` tidak bisa dibaca non-admin, sehingga dibandingkan lewat dua jalur. `ssh-keyscan` di laptop via loopback 127.0.0.1 = `ssh-keyscan` dari STB via kabel = **`SHA256:ndDENvnEclNjvGZJu02wCWGNf/ySykjOF1jF2KMzOcI`** (ED25519) → cocok, lalu ditambahkan ke `/root/.ssh/known_hosts` STB (600).
+- **A7, verifikasi dari STB:**
+  - `sftp laptop-backup` (key) berhasil. `pwd` = `/`, `ls /` = hanya `/restic`. `cd ..` → `realpath /..: Permission denied`. `mkdir`/`rmdir /restic/_uji-tulis` berhasil. `mkdir /_uji-luar-restic` dan `put /hostname-uji` → Permission denied.
+  - Shell: `ssh laptop-backup whoami` → "This service allows sftp connections only."; `ssh -tt` → "PTY allocation request failed".
+  - Password: server hanya menawarkan `publickey,keyboard-interactive` (tidak ada `password`) untuk `homebackup` dan `sorar`. Uji `keyboard-interactive` dengan `-vvv` + askpass berisi password salah: server langsung mengirim FAILURE tanpa info request (tidak pernah meminta password), jadi tidak ada jalur login password. **Usulan (belum diterapkan):** tambah `KbdInteractiveAuthentication no` global sebagai lapisan tambahan.

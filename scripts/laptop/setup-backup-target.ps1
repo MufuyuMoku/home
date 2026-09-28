@@ -294,12 +294,14 @@ Info ("RemoteAddress rule baru: " + ((Get-NetFirewallRule -Name $FwRuleName | Ge
 
 # --- 6. authorized_keys -------------------------------------------------------
 Step '6. Public key STB'
-$sshDir = Join-Path $ProfileDir '.ssh'
-$akFile = Join-Path $sshDir 'authorized_keys'
-New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+# Catatan: nama variabel PowerShell tidak peka huruf besar/kecil, jadi jangan pakai $sshDir
+# (bentrok dengan $SshDir = folder program OpenSSH).
+$userSshDir = Join-Path $ProfileDir '.ssh'
+$akFile = Join-Path $userSshDir 'authorized_keys'
+New-Item -ItemType Directory -Force -Path $userSshDir | Out-Null
 [IO.File]::WriteAllText($akFile, $StbPublicKey + "`n", $Utf8NoBom)
 # OpenSSH Windows menolak authorized_keys yang bisa ditulis selain SYSTEM/Administrators/pemilik.
-Invoke-Icacls $sshDir /inheritance:r /grant:r "${SidSystem}:(OI)(CI)F" "${SidAdmins}:(OI)(CI)F" "${UserName}:(OI)(CI)R"
+Invoke-Icacls $userSshDir /inheritance:r /grant:r "${SidSystem}:(OI)(CI)F" "${SidAdmins}:(OI)(CI)F" "${UserName}:(OI)(CI)R"
 Invoke-Icacls $akFile /inheritance:r /grant:r "${SidSystem}:F" "${SidAdmins}:F" "${UserName}:R"
 & icacls $akFile
 Info "Terpasang: $akFile"
