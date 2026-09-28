@@ -1,7 +1,7 @@
 # Project HOME: High Operative Management Environment
 
-> **Status: DRAF.** Fase 0 selesai (2026-09-28). Fase 1 baru disiapkan, belum di-deploy.
-> Bagian yang ditandai *TODO* akan dilengkapi setelah langkahnya benar-benar dikerjakan dan diuji.
+> **Status:** Fase 0 (fondasi) dan Fase 1 (starter kit, 4 layanan) selesai dan lulus uji reboot (2026-09-28).
+> Belum ada: backup, persistent journal, firewall, dan akses jarak jauh (dirancang terpisah oleh konsultan).
 
 Homelab pribadi di sebuah STB bekas. Repo ini adalah **sumber kebenaran**: semua yang terpasang di STB
 harus bisa dibangun ulang dari isi repo ini. Semua layanan hanya untuk jaringan lokal, tidak ada yang
@@ -22,34 +22,47 @@ diekspos ke internet.
 | Jaringan | LAN langsung ke laptop Windows (ICS). STB `192.168.137.202`, laptop `192.168.137.1` |
 
 STB ini **tidak punya HDMI dan tidak ada router**. Kalau boot atau SSH rusak, satu-satunya jalan adalah
-flashing ulang. Karena itu kernel, DTB, bootloader, `/boot`, jaringan, dan SSH tidak disentuh (lihat CLAUDE.md).
+flashing ulang. Karena itu kernel, DTB, bootloader, dan `/boot` tidak pernah disentuh, dan setiap
+perubahan SSH/jaringan wajib memakai timer rollback otomatis (lihat CLAUDE.md, aturan 12).
 
 ## Layanan
 
-| Layanan | Fungsi | Alamat | Status |
-|---|---|---|---|
-| Homepage | Dashboard: link ke semua layanan + CPU/RAM/suhu | http://192.168.137.202:3000 | disiapkan |
-| Uptime Kuma | Monitoring hidup/matinya layanan | http://192.168.137.202:3001 | disiapkan |
-| Gitea (SQLite) | Server Git pribadi, mirror repo GitHub | http://192.168.137.202:3002, SSH port 2222 | disiapkan |
-| FileBrowser Quantum | File manager web untuk `/mnt/data/files` | http://192.168.137.202:8080 | berjalan |
+| Layanan | Fungsi | Alamat | Image (di-pin, arm64) | mem_limit |
+|---|---|---|---|---|
+| Homepage | Dashboard: link ke semua layanan + CPU/RAM/suhu | http://192.168.137.202:3000 | `ghcr.io/gethomepage/homepage:v2.4.0` | 256m |
+| Uptime Kuma | Monitoring hidup/matinya layanan | http://192.168.137.202:3001 | `louislam/uptime-kuma:2.5.5-slim` | 384m |
+| Gitea (SQLite) | Server Git pribadi, mirror repo GitHub | http://192.168.137.202:3002, git SSH port 2222 | `gitea/gitea:1.27.3` | 384m |
+| FileBrowser Quantum | File manager web untuk `/mnt/data/files` | http://192.168.137.202:8080 | `ghcr.io/gtsteffaniak/filebrowser:1.5.6-stable-slim` | 192m |
 
-Setiap layanan ada di `services/<nama>/compose.yaml`, dengan image yang versinya di-pin (semuanya arm64),
-`mem_limit`, `restart: unless-stopped`, dan data di `/mnt/data/<nama>/`.
+Semua layanan memakai `restart: unless-stopped` dan menyala otomatis setelah reboot. Docker baru mulai
+setelah kartu data terpasang. Pemakaian RAM setelah boot sekitar 650 MB untuk keempat container, dengan
+sekitar 1,2 GB masih tersedia. Uptime Kuma memantau Homepage, Gitea, FileBrowser Quantum, dan port SSH Gitea.
+
+Filebrowser upstream **tidak dipakai** (proyeknya diarsipkan 2026-09-01, tanpa patch keamanan).
+
+## Keamanan
+
+- Port yang terbuka ke jaringan hanya 22 (SSH STB), 2222 (git SSH Gitea), 3000, 3001, 3002, 8080. Tidak ada port yang diekspos ke internet.
+- SSH STB **hanya dengan key** (`config/etc/ssh/sshd_config.d/10-home.conf`). Login password ditolak.
+- CasaOS, rclone, Samba, rpcbind, dan openvpn dimatikan (tidak di-uninstall; cara menyalakan lagi ada di `docs/log.md`).
+- Tidak ada container yang mendapat akses `docker.sock`. FileBrowser Quantum hanya melihat `/mnt/data/files`.
+- Semua akun admin dibuat klien lewat browser. **Tidak ada password di repo.** File `.env` hanya ada di STB (chmod 600).
+- Firewall belum dipasang (ditunda sampai rancangan akses jarak jauh).
 
 ## Struktur repo
 
 ```
-README.md                  # file ini
-CLAUDE.md                  # aturan & rancangan (brief konsultan)
-docs/hardware.md           # inventaris hardware
-docs/log.md                # catatan perubahan
-config/etc/...             # file konfigurasi sistem, jalurnya meniru lokasinya di STB
-scripts/fase0.sh           # fondasi (idempoten)
-scripts/update.sh          # update paket manual yang aman (--dry-run untuk simulasi)
-services/<nama>/           # compose.yaml, .env.example, config layanan
+README.md                         # file ini
+CLAUDE.md                         # aturan & rancangan (brief konsultan)
+docs/hardware.md                  # inventaris hardware
+docs/log.md                       # catatan perubahan
+config/etc/docker/daemon.json     # data-root /mnt/data/docker, overlay2, rotasi log
+config/etc/systemd/system/docker.service.d/10-home-requires-data.conf
+config/etc/ssh/sshd_config.d/10-home.conf
+scripts/fase0.sh                  # fondasi (idempoten)
+scripts/update.sh                 # update paket manual yang aman (--dry-run untuk simulasi)
+services/<nama>/                  # compose.yaml, .env.example, config layanan
 ```
-
-Rahasia (password, token) hanya ada di file `.env` di STB, yang tidak pernah di-commit. Yang ada di repo hanya `.env.example`.
 
 ## Membangun ulang dari nol
 
@@ -68,17 +81,39 @@ Rahasia (password, token) hanya ada di file `.env` di STB, yang tidak pernah di-
    ```bash
    ssh stb "screen -S fase0 /opt/home/scripts/fase0.sh"
    ```
-   Script ini menahan paket kernel/Armbian, mematikan repo Armbian beta, membekukan initramfs,
-   mematikan update otomatis, meng-upgrade paket dengan aman, mengatur zona waktu Asia/Jakarta,
-   mematikan devmon, memeriksa kartu data di `/mnt/data`, lalu memasang `daemon.json` Docker
-   (data-root `/mnt/data/docker`, overlay2, rotasi log) dan drop-in `RequiresMountsFor=/mnt/data`.
-   Script berhenti kalau ada yang tidak sesuai, misalnya kalau kartu data belum siap.
-5. **Layanan.** *TODO (Fase 1):* untuk setiap layanan, salin `.env.example` → `.env`, isi, lalu
-   `docker compose up -d`, dan tes dari browser laptop.
+   Script ini:
+   - menahan paket kernel/Armbian, mematikan repo Armbian beta, membekukan initramfs, dan mematikan update otomatis,
+   - meng-upgrade paket dengan aman dan mengatur zona waktu Asia/Jakarta,
+   - memeriksa kartu data,
+   - memasang Docker dari repo resmi kalau belum ada, dengan data-root `/mnt/data/docker` + overlay2,
+   - mematikan layanan yang tidak dipakai,
+   - menerapkan SSH hanya-key. **Setelah script selesai, uji koneksi SSH baru dari laptop sebelum menutup sesi.**
+5. **Layanan** (satu per satu, tes di browser sebelum lanjut). Untuk setiap layanan: `cd /opt/home/services/<nama>`,
+   `cp .env.example .env && chmod 600 .env`, sesuaikan isinya, siapkan folder data, lalu `docker compose up -d`.
+
+   | Layanan | Siapkan dulu | Pertama kali di browser |
+   |---|---|---|
+   | filebrowser-quantum | `mkdir -p /mnt/data/files /mnt/data/filebrowser-quantum/data`, salin `config.yaml` ke `.../data/`, `chown -R 1000:1000` keduanya | Login `admin`/`admin` (bawaan image), **ganti password segera** |
+   | gitea | `mkdir -p /mnt/data/gitea` | Halaman instalasi: biarkan nilai bawaan, **isi "Administrator Account Settings"** (pendaftaran publik dimatikan) |
+   | uptime-kuma | `mkdir -p /mnt/data/uptime-kuma` | Pilih **SQLite**, buat akun admin, lalu tambah monitor HTTP untuk `:3000`, `:3002`, `:8080` dan TCP `:2222` (pakai IP, bukan `localhost`) |
+   | homepage | `mkdir -p /mnt/data/homepage/config`, salin `config/*.yaml` ke sana, `chown -R 1000:1000 /mnt/data/homepage` | Tidak ada login. Cek kartu layanan dan widget STB |
+
+   Tanpa backup, akun, repo Gitea, monitor Uptime Kuma, dan file di `/mnt/data/files` **tidak** ikut terbangun ulang.
+   Yang terbangun ulang dari repo hanya sistem dan konfigurasi layanan.
 
 ## Perawatan
 
 - **Update paket:** `scripts/update.sh --dry-run` untuk melihat apa yang akan berubah, lalu
   `screen -S update /opt/home/scripts/update.sh` untuk upgrade sungguhan. Update otomatis sengaja dimatikan.
+- **Update layanan:** ganti tag image di `services/<nama>/compose.yaml` (selalu versi yang di-pin dan mendukung arm64),
+  commit dan push, salin ke STB, lalu `docker compose up -d`. Catat di `docs/log.md`.
 - **Mematikan STB:** selalu `ssh stb poweroff` dulu, baru cabut adaptor.
 - **Reboot:** hanya dengan izin klien, dan setelah fstab terverifikasi (`findmnt --verify`).
+- **Repo:** setiap checkpoint di-commit **dan di-push** ke GitHub (`MufuyuMoku/home`), lalu di-mirror ke Gitea.
+
+## Belum dikerjakan
+
+- **Backup** (wajib dirancang): `/mnt/data/gitea`, `/mnt/data/uptime-kuma`, `/mnt/data/homepage`,
+  `/mnt/data/filebrowser-quantum/data`, `/mnt/data/files`.
+- **Persistent journal** (usulan ada di `docs/log.md`).
+- **Firewall, akses jarak jauh (Tailscale), USB WiFi, reverse proxy/domain.**

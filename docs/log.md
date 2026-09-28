@@ -319,3 +319,15 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Pra-cek (dari dalam container `uptime-kuma`):** `http://192.168.137.202:3000|3002|8080` → 200, TCP `192.168.137.202:2222` terbuka.
 - **Dibuat klien lewat UI** (dipandu): Homepage (HTTP `:3000`), Gitea (HTTP `:3002`), FileBrowser Quantum (HTTP `:8080`), Gitea SSH (TCP `:2222`), semuanya dengan interval 60 s. Memakai IP STB, bukan `localhost` (di dalam container, `localhost` = container itu sendiri). Notifikasi belum diatur (butuh internet; masuk rancangan akses jarak jauh).
 - **Verifikasi (baca `kuma.db` read-only):** 4 monitor aktif, heartbeat terakhir semuanya **UP** (HTTP `200 - OK`, TCP 3 ms).
+
+## 2026-09-28: Uji reboot Fase 1 (izin klien)
+
+- **Sebelum:** uptime 1:32, `findmnt --verify` 0 error, 4 container Up (3 healthy + gitea tanpa healthcheck), `--failed` kosong, RAM available 1156 MB. Port jaringan: 22, 2222, 3000, 3001, 3002, 8080.
+- **Reboot:** 19:56:03. Ping berhenti pada detik ke-10, **kembali pada detik ke-47**, **SSH (key) pada detik ke-50**. `systemd-analyze`: 5,1 s + 24,0 s = 29,1 s.
+- **Sesudah:**
+  - **Keempat container menyala otomatis** (`unless-stopped`), restart count 0, semuanya start 19:56:20 WIB. Docker aktif pada detik ke-29,1 sejak boot, **setelah** `mnt-data.mount` (8,8 s).
+  - HTTP: 3000 → 200, 3001 → 302, 3002 → 200, 8080 → 200. `ssh-keyscan -p 2222` → host key. Port sama seperti sebelum reboot.
+  - `/dev/sda1` di `/mnt/data`, Docker root `/mnt/data/docker` overlay2, SSH `passwordauthentication no` / `permitrootlogin without-password`, hold 8, `--failed` kosong, dmesg tanpa I/O error/OOM.
+  - Uptime Kuma: keempat monitor **UP** (12:58 UTC = 19:58 WIB).
+- **Temuan kecil:** Homepage sempat `unhealthy`. Dua healthcheck pertama (19:57:36, 19:57:49) melewati timeout 3 s saat load boot tinggi (load 3,5, empat container start bersamaan). Sejak 19:58:04 lulus terus, dan healthcheck manual 0,04 s. Tidak ada restart. Tidak ada tindakan (opsional nanti: `start_period` lebih panjang di compose).
+- **RAM setelah reboot:** available **1206 MB**. Container: Homepage 177 MiB (dari batas 256), Uptime Kuma 198 MiB (384), Gitea 202 MiB (384), FileBrowser Quantum 67 MiB (192). Lebih tinggi daripada setelah pemasangan pertama (104/128/130/44). **Homepage sekitar 69% dari `mem_limit`, perlu dipantau.** Suhu 55 °C. eMMC 48%, `/mnt/data` 1,3G terpakai.
