@@ -42,3 +42,15 @@ Format: tanggal, apa yang dilakukan, kenapa. Entri terbaru di bawah.
 
 - **Apa:** `timedatectl set-timezone Asia/Jakarta`. `/etc/localtime` sekarang menunjuk ke `/usr/share/zoneinfo/Asia/Jakarta`. Jam sistem tetap sinkron, dan RTC tetap UTC.
 - **Kenapa:** supaya jam di log dan jadwal sesuai WIB.
+
+## 2026-09-28: Uji reboot terkendali (izin klien khusus untuk langkah ini)
+
+- **Kenapa:** membuktikan STB bisa boot dan SSH kembali setelah perubahan poin 2–3, sebelum fstab disentuh di poin 4.
+- **Sebelum:** uptime 1:34, `ssh`/`NetworkManager`/`docker` active, hold 8 paket, `systemctl --failed` kosong. `findmnt --verify`: 0 error, 2 warning tentang `/dev/root` (normal di Armbian: `/dev/root` adalah alias dari parameter kernel, bukan file device). fstab tidak diubah.
+- **Reboot:** `systemctl reboot` pukul 10:56:13 WIB. Dipantau dari laptop dengan ping setiap detik:
+  - ping berhenti pada detik ke-6,
+  - **ping kembali pada detik ke-37**,
+  - **SSH bisa dipakai pada detik ke-40**.
+  - `systemd-analyze`: 5,2 s (kernel) + 27,5 s (userspace) = 32,7 s.
+- **Sesudah:** uptime ter-reset (boot_id berubah), kernel tetap `6.12.35-current-meson64`, `ssh`/`NetworkManager`/`docker` active, hold tetap 8 paket, zona waktu `Asia/Jakarta (WIB, +0700)`, `is-system-running` = `running`, `systemctl --failed` kosong. RAM available 1,5 GiB, suhu 57 °C.
+- **Catatan:** setelah reboot microSD tidak ter-mount. `devmon` aktif, tapi hanya memasang media saat kartu dicolok (hotplug), tidak saat boot. Tidak berpengaruh, karena devmon akan dimatikan di poin 4.
