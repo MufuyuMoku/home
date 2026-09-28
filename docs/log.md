@@ -224,3 +224,11 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 4. **Keausan:** batas total 64 MB, file 8 MB, dan sync per 60 detik di microSD 128 GB (sudah 609 MB lifetime writes). Dampaknya sangat kecil. eMMC tidak mendapat tulisan tambahan.
 - **Alternatif minimal (tanpa journal persisten):** timer per jam yang menjalankan `armbian-ramlog write`, sehingga log teks yang hilang saat listrik putus paling banyak 1 jam. Tulisan ke eMMC hanya file yang berubah (rsync), tapi journal tetap hilang.
 - **Status:** hanya usulan, menunggu desain konsultan.
+
+## 2026-09-28: Tindak lanjut audit (7): uji reboot ketiga (izin klien)
+
+- **Sebelum:** uptime 24 menit, `findmnt --verify` 0 error, `--failed` kosong, port terbuka hanya TCP 22, RAM available 1648 MB.
+- **Reboot:** 18:23:06. Ping berhenti pada detik ke-10, **kembali pada detik ke-44**, **SSH dengan key pada detik ke-47**. `systemd-analyze`: 5,1 s + **19,8 s** = 24,8 s (sebelumnya userspace 27,2 s).
+- **Sesudah:** `is-system-running` = running. Ke-14 unit yang dimatikan (6 casaos, rclone, smbd, nmbd, samba-ad-dc, rpcbind service+socket, openvpn, devmon) inactive/disabled, tanpa proses tersisa. Shell devmon `/usr/sbin/nologin`. Port terbuka ke jaringan hanya TCP 22. `sshd -T`: `permitrootlogin without-password`, `passwordauthentication no`. Koneksi baru tanpa key → `Permission denied (publickey)`, server hanya menawarkan `publickey`. `/dev/sda1` hanya di `/mnt/data`. Docker root `/mnt/data/docker` overlay2. `ssh`/`NetworkManager`/`docker`/`containerd`/`wpa_supplicant` active. Hold 8, zona waktu Asia/Jakarta, `--failed` kosong, dmesg tanpa error I/O. Suhu 52 °C. eMMC 48%, `/mnt/data` 113 GB tersedia.
+- **RAM available:** **1503 MB** (sebelum langkah 1, saat CasaOS dkk. masih jalan) → **1650 MB** (setelah boot tanpa layanan itu), atau **+147 MB**. `used` 417 → 270 MB.
+- **CLAUDE.md** bagian "Kondisi" diperbarui (layanan yang dimatikan, SSH hanya-key, port terbuka).

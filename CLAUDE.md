@@ -35,7 +35,9 @@ Klien masih belajar soal server/Linux. Komunikasi dalam **bahasa Indonesia**. Se
 - **Docker:** `data-root` = `/mnt/data/docker`, storage driver `overlay2` (containerd image store dimatikan lewat `"features": {"containerd-snapshotter": false}`), log `json-file` 10m × 3. Sumber: `config/etc/docker/daemon.json`. Drop-in `config/etc/systemd/system/docker.service.d/10-home-requires-data.conf` (`RequiresMountsFor=/mnt/data`), sehingga Docker tidak menyala sebelum kartu data terpasang. `override.conf` di folder yang sama adalah bawaan (kemungkinan dari CasaOS); jangan diubah.
 - **Kartu data:** fstab `UUID=569f0d64-a5d7-48b1-9626-f2da7395efa2 /mnt/data ext4 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2`.
 - **devmon dimatikan** (`disable --now`). Disk hanya dipasang lewat fstab.
-- **Terpasang sebelum proyek (belum diputuskan):** CasaOS (6 layanan `casaos*` + `rclone.service`, dashboard di port 80), Samba, `rpcbind`. Lihat audit keamanan di `docs/log.md`. `casaos-local-storage` terbukti tidak me-mount kartu data (uji reboot 2026-09-28).
+- **Dimatikan (stop + disable, TIDAK di-uninstall):** CasaOS (6 unit `casaos*`) + `rclone.service`, Samba (`smbd`, `nmbd`, `samba-ad-dc`), `rpcbind.service` + `rpcbind.socket`, `openvpn.service`. User `devmon` memakai shell `/usr/sbin/nologin`. `wpa_supplicant` sengaja dibiarkan (untuk USB WiFi). Cara menyalakan kembali ada di `docs/log.md`. Jangan dinyalakan lagi tanpa persetujuan klien.
+- **SSH hanya-key:** `config/etc/ssh/sshd_config.d/10-home.conf` → `PermitRootLogin prohibit-password`, `PasswordAuthentication no`. `sshd_config` utama tidak diubah. Setiap perubahan SSH: `sshd -t`, `reload` (bukan restart), dan uji koneksi baru sambil menjaga sesi lama tetap terbuka.
+- **Port terbuka ke jaringan:** hanya TCP 22. Firewall ditunda (dirancang bersama akses jarak jauh).
 - Backup file asli ada di STB: `/root/fase0/backup/`.
 
 ## Aturan mutlak
