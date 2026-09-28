@@ -1,0 +1,13 @@
+# Project HOME: backup /mnt/data ke laptop (restic lewat rclone). Lihat docs/rancangan-backup.md.
+[Unit]
+Description=Project HOME backup (restic ke laptop)
+Wants=network-online.target
+After=network-online.target docker.service mnt-data.mount
+
+[Service]
+Type=oneshot
+ExecStart=/opt/home/scripts/backup.sh backup
+# Exit 0 juga dipakai untuk "dilewati" (kartu data/laptop tidak ada).
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=6h

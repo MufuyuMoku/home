@@ -1,0 +1,10 @@
+# Project HOME: pemeriksaan integritas backup mingguan; jadwal yang terlewat dikejar (Persistent).
+[Unit]
+Description=Jadwal Project HOME pemeriksaan integritas backup
+
+[Timer]
+OnCalendar=Sun *-*-* 21:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

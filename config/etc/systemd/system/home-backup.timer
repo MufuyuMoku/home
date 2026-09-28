@@ -1,0 +1,11 @@
+# Project HOME: backup harian + 10 menit setelah boot; jadwal yang terlewat dikejar (Persistent).
+[Unit]
+Description=Jadwal Project HOME backup
+
+[Timer]
+OnCalendar=*-*-* 20:00:00
+OnBootSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

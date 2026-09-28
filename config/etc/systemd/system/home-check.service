@@ -1,0 +1,12 @@
+# Project HOME: pemeriksaan integritas repo backup (restic check --read-data-subset=5%).
+[Unit]
+Description=Project HOME pemeriksaan integritas backup
+Wants=network-online.target
+After=network-online.target mnt-data.mount
+
+[Service]
+Type=oneshot
+ExecStart=/opt/home/scripts/backup.sh check
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=6h
