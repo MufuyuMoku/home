@@ -1,0 +1,16 @@
+# Uptime Kuma: monitoring hidup/matinya layanan.
+# Varian -slim: tanpa MariaDB/Chromium bawaan (171 MB vs 574 MB); database SQLite.
+name: uptime-kuma
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.5.5-slim
+    container_name: uptime-kuma
+    restart: unless-stopped
+    mem_limit: 384m
+    ports:
+      - "3001:3001"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /mnt/data/uptime-kuma:/app/data

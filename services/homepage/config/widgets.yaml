@@ -1,0 +1,16 @@
+# Status STB: CPU, RAM, suhu. Container berbagi kernel dengan host, jadi angka CPU/RAM/suhu
+# adalah milik STB. Disk "/" di dalam container = filesystem data-root Docker
+# (microSD setelah data-root dipindah), bukan eMMC.
+- resources:
+    label: STB
+    cpu: true
+    memory: true
+    cputemp: true
+    uptime: true
+    disk: /
+- datetime:
+    text_size: md
+    format:
+      dateStyle: long
+      timeStyle: short
+      hour12: false

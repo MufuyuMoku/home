@@ -1,0 +1,19 @@
+# Homepage: dashboard beranda Project HOME.
+# Deploy: salin config/ ke /mnt/data/homepage/config, lalu `docker compose up -d`.
+name: homepage
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v2.4.0
+    container_name: homepage
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - "3000:3000"
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - /mnt/data/homepage/config:/app/config

@@ -1,0 +1,14 @@
+# Semua layanan Fase 1. siteMonitor mengecek apakah layanan menjawab (hijau/merah).
+- Layanan:
+    - Uptime Kuma:
+        href: http://192.168.137.202:3001
+        description: Monitoring hidup/matinya layanan
+        siteMonitor: http://192.168.137.202:3001
+    - Gitea:
+        href: http://192.168.137.202:3002
+        description: Server Git pribadi
+        siteMonitor: http://192.168.137.202:3002
+    - Filebrowser:
+        href: http://192.168.137.202:8080
+        description: File manager /mnt/data/files
+        siteMonitor: http://192.168.137.202:8080

@@ -1,0 +1,4 @@
+# Rahasia tidak boleh masuk repo (aturan 7). Yang di-commit hanya .env.example.
+.env
+*.env
+!.env.example

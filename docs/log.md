@@ -81,3 +81,27 @@ Format: tanggal, apa yang dilakukan, kenapa. Entri terbaru di bawah.
   - `update.sh [--dry-run]` melakukan: pemeriksaan awal (8 hold wajib, repo beta nonaktif, `update_initramfs=no`, internet, dan wajib di dalam screen/tmux untuk upgrade sungguhan), `apt-get update`, lalu simulasi `apt-get -s upgrade`. Paket ditolak kalau namanya `armbian-*`/`linux-image-*`/`linux-dtb-*`/`*u-boot-*`, kalau versi kandidatnya bukan dari `ports.ubuntu.com`/`download.docker.com`, kalau memiliki file di `/boot`, atau kalau simulasi akan menghapus paket. Setelah itu: potret md5 `/boot`, upgrade `--force-confdef --force-confold`, `apt-get clean`, bandingkan `/boot`, cek hold dan layanan `ssh`/`NetworkManager`/`docker`. Log di `/root/home-update/`.
   - `fase0.sh` melakukan: inventaris, hold, repo beta, initramfs, auto-update mati, upgrade (memanggil `update.sh`), zona waktu, devmon mati, `daemon.json`, dan tes `hello-world`. Backup file asli hanya dibuat sekali di `/root/fase0/backup/`. **TODO:** format kartu data + fstab (poin 4), pemasangan Docker untuk STB baru (belum diotomatiskan, script berhenti kalau Docker tidak ada), dan pemindahan `data-root`.
 - **Uji:** `bash -n` OK untuk keduanya, file ber-LF. `update.sh --dry-run` → exit 0 ("tidak ada paket yang perlu di-upgrade"). Argumen salah → exit 2. Upgrade tanpa screen → ditolak (exit 1). Penyaring paket diuji terpisah dengan daftar contoh; uji ini menemukan bug (URL `http://ports.ubuntu.com` tanpa `/` ikut ditolak), yang sudah diperbaiki. Setelah itu `docker-ce`/`curl`/`containerd.io` lolos, dan `armbian-config`/`linux-image-*`/BSP ditolak. **`fase0.sh` tidak dijalankan** (sesuai instruksi).
+
+## 2026-09-28: STB mati sekitar 12:00 dan menyala 17:34, **power dicabut manual oleh klien**
+
+- **Apa:** SSH/ping gagal sekitar 17:33. STB kembali 17:34 dengan boot ID baru. `last` tidak mencatat shutdown normal, dan jam boot mundur ke 12:00 (STB tanpa baterai RTC memakai waktu terakhir yang tersimpan). Log sesi sebelumnya hilang karena journal disimpan di RAM (zram).
+- **Penyebab (konfirmasi klien):** adaptor daya dicabut manual sekitar 12:00 karena STB ditinggal, lalu dicolok lagi sekitar 17:34. STB memakai adaptor sendiri, bukan USB laptop. Bukan masalah sistem.
+- **Setelah boot:** `ssh`/`NetworkManager`/`docker` active, `systemctl --failed` kosong, RAM available 1,5 GiB, suhu 44 °C.
+- **Kesepakatan:** mulai sekarang klien mematikan STB dengan `ssh stb poweroff` sebelum mencabut daya.
+- **Usulan (disetujui sebagai rencana, BELUM diterapkan):** persistent journal supaya log tidak hilang saat mati mendadak. Dirancang konsultan setelah poin 4 (kemungkinan disimpan di kartu data, bukan eMMC).
+
+## 2026-09-28: Persiapan Fase 1 (tanpa deploy)
+
+- **Apa:** `services/{homepage,uptime-kuma,gitea,filebrowser}/compose.yaml` + `.env.example`, config Homepage (`services/homepage/config/*.yaml`), dan `.gitignore` (`.env` tidak pernah di-commit). Disalin ke STB `/opt/home/services/` hanya untuk validasi.
+- **Image di-pin** (dicek dengan `docker manifest inspect` dan membaca config image dari registry, **tanpa pull**):
+
+  | Image | arm64 | Terkompresi | mem_limit | Port | Data |
+  |---|---|---|---|---|---|
+  | `ghcr.io/gethomepage/homepage:v2.4.0` | ✅ | 75 MB | 256m | 3000 | `/mnt/data/homepage/config` |
+  | `louislam/uptime-kuma:2.5.5-slim` | ✅ | 171 MB | 384m | 3001 | `/mnt/data/uptime-kuma` |
+  | `gitea/gitea:1.27.3` | ✅ | 66 MB | 384m | 3002, 2222 | `/mnt/data/gitea` |
+  | `filebrowser/filebrowser:v2.63.23` | ✅ | 15 MB | 128m | 8080 | `/mnt/data/files`, `/mnt/data/filebrowser/{database,config}` |
+
+  Total sekitar 330 MB terkompresi (perkiraan 0,8–1 GB setelah diekstrak). Uptime Kuma memakai varian `-slim` (tanpa MariaDB/Chromium bawaan; versi penuh 574 MB).
+- **Keputusan desain:** Homepage tidak diberi `docker.sock` (setara akses root). Status layanan memakai `siteMonitor`. Gitea: SQLite, `DISABLE_REGISTRATION=true` (admin dibuat di halaman instalasi). Filebrowser berjalan sebagai UID 1000 (password admin awal ada di `docker logs`). Port dipublikasikan ke semua antarmuka STB, dan hanya bisa dijangkau dari LAN karena tidak ada router.
+- **Validasi:** semua file LF. `docker compose config --quiet` valid untuk keempatnya (dengan `--env-file .env.example`). YAML config Homepage bisa di-parse. Image/container di STB tetap 0.

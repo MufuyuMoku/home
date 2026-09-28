@@ -1,0 +1,19 @@
+# Filebrowser: file manager web untuk /mnt/data/files.
+# Image berjalan sebagai UID/GID 1000; ketiga folder di bawah harus dimiliki 1000:1000.
+# Password admin awal dibuat acak dan dicetak di `docker logs filebrowser` saat start pertama.
+name: filebrowser
+
+services:
+  filebrowser:
+    image: filebrowser/filebrowser:v2.63.23
+    container_name: filebrowser
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "8080:80"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /mnt/data/files:/srv
+      - /mnt/data/filebrowser/database:/database
+      - /mnt/data/filebrowser/config:/config

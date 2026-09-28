@@ -1,0 +1,28 @@
+# Gitea (SQLite): server Git pribadi, mirror repo GitHub.
+# Akun admin dibuat di halaman instalasi saat pertama dibuka; pendaftaran publik dimatikan.
+name: gitea
+
+services:
+  gitea:
+    image: gitea/gitea:1.27.3
+    container_name: gitea
+    restart: unless-stopped
+    mem_limit: 384m
+    ports:
+      - "3002:3000"   # web
+      - "2222:22"     # git lewat SSH
+    environment:
+      USER_UID: ${PUID}
+      USER_GID: ${PGID}
+      TZ: ${TZ}
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__DOMAIN: ${HOST_IP}
+      GITEA__server__SSH_DOMAIN: ${HOST_IP}
+      GITEA__server__ROOT_URL: http://${HOST_IP}:3002/
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__SSH_PORT: "2222"
+      GITEA__server__SSH_LISTEN_PORT: "22"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+    volumes:
+      - /mnt/data/gitea:/data
+      - /etc/localtime:/etc/localtime:ro
