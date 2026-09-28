@@ -312,3 +312,10 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
   - Widget resources: CPU OK, `cputemp` 52 °C.
 - **RAM:** Homepage sekitar 104 MiB (CPU sempat 79% saat halaman pertama kali dibangun). RAM available STB 1296 → **1180 MB** (ambang 700 MB). **Kartu data terpakai:** 1012M → 1,3G.
 - **Total Fase 1 (4 layanan):** RAM available **1659 → 1180 MB** (sebelum layanan pertama → setelah layanan keempat). Container: Homepage 104, Uptime Kuma 128, Gitea 130, FileBrowser Quantum 44 MiB.
+- **Tes klien:** berhasil.
+
+## 2026-09-28: Monitor Uptime Kuma (dibuat klien)
+
+- **Pra-cek (dari dalam container `uptime-kuma`):** `http://192.168.137.202:3000|3002|8080` → 200, TCP `192.168.137.202:2222` terbuka.
+- **Dibuat klien lewat UI** (dipandu): Homepage (HTTP `:3000`), Gitea (HTTP `:3002`), FileBrowser Quantum (HTTP `:8080`), Gitea SSH (TCP `:2222`), semuanya dengan interval 60 s. Memakai IP STB, bukan `localhost` (di dalam container, `localhost` = container itu sendiri). Notifikasi belum diatur (butuh internet; masuk rancangan akses jarak jauh).
+- **Verifikasi (baca `kuma.db` read-only):** 4 monitor aktif, heartbeat terakhir semuanya **UP** (HTTP `200 - OK`, TCP 3 ms).
