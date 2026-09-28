@@ -183,3 +183,20 @@ Port lain hanya di localhost (CasaOS internal, `systemd-resolved`, `chronyd`).
 - **Tidak diubah:** `wpa_supplicant` (akan dipakai untuk USB WiFi).
 - **Verifikasi:** keenam unit inactive/disabled. `getent passwd devmon` → `/usr/sbin/nologin`. **Port yang terbuka ke jaringan sekarang hanya TCP 22 (ssh).** `--failed` kosong. RAM available 1641 → 1647 MB.
 - **Cara menyalakan kembali:** `systemctl enable --now <unit>` (untuk rpcbind: `rpcbind.socket` dan `rpcbind.service`). Shell devmon: `usermod -s /usr/bin/bash devmon`.
+
+## 2026-09-28: Tindak lanjut audit (3): SSH hanya-key
+
+- **Prasyarat:** klien sudah membackup private key ke media offline.
+- **Kondisi awal:** `ssh.socket` enabled (socket activation) + `ssh.service`. `/etc/ssh/sshd_config.d/` kosong. `Include /etc/ssh/sshd_config.d/*.conf` ada di baris 12 `sshd_config`, sebelum `PermitRootLogin yes` (baris 42). Efektif: `permitrootlogin yes`, `passwordauthentication yes`.
+- **Apa:** `config/etc/ssh/sshd_config.d/10-home.conf` → `/etc/ssh/sshd_config.d/10-home.conf` berisi `PermitRootLogin prohibit-password` dan `PasswordAuthentication no`. File utama `sshd_config` tidak diubah.
+- **Prosedur:**
+  - `sshd -t` → OK. `sshd -T` → `permitrootlogin without-password` (alias `prohibit-password`), `passwordauthentication no`, `pubkeyauthentication yes`.
+  - **Sesi lama:** ControlMaster SSH ternyata tidak berfungsi di OpenSSH Git-Bash Windows (`mux_client_request_session ... Connection reset`), jadi dipakai koneksi SSH latar belakang (`tail -f file | ssh stb 'exec bash -s'`) yang mengeksekusi perintah tanpa login baru. Terbukti bekerja sebelum dan sesudah reload (pid 8581 yang sama).
+  - **Pengaman tambahan:** timer darurat `systemd-run --unit=home-ssh-rollback --on-active=10min` (hapus `10-home.conf` + `systemctl reload ssh`), dibatalkan lewat sesi lama setelah tes lulus.
+  - `systemctl reload ssh` (bukan restart). `ssh` dan `ssh.socket` tetap active.
+- **Uji koneksi BARU dari laptop:** `ssh stb` (key) → berhasil. `ssh -o PubkeyAuthentication=no stb` → `Permission denied (publickey)`, dan server hanya menawarkan `publickey` (sebelumnya `publickey,password`).
+- **Membatalkan:** `rm /etc/ssh/sshd_config.d/10-home.conf && systemctl reload ssh`.
+
+## 2026-09-28: Tindak lanjut audit (4): firewall
+
+- **Ditunda, akan dirancang bersama akses jarak jauh/forum.** Tidak ada perubahan. Saat ini port yang terbuka ke jaringan hanya TCP 22.
