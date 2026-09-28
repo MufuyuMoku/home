@@ -31,4 +31,14 @@ Format: tanggal, apa yang dilakukan, kenapa. Entri terbaru di bawah.
   - `ssh`, `NetworkManager`, `docker`, `containerd`: active. Tidak ada `reboot-required`.
   - Docker 29.8.1, Compose v5.5.1. RAM available 1,4 GiB. Root 55% terpakai (sisa 2,6 GB).
 - **CLAUDE.md** diperbarui: bagian "Kondisi paket & update", aturan mutlak 9 (repo beta) dan 10 (hold/initramfs/update otomatis), poin 5 menjadi konfigurasi ulang Docker, dan poin 6 ditambah `scripts/update.sh`.
-- **Rencana `scripts/update.sh` (dibuat di poin 6):** cek internet, lalu `apt-get update`, lalu simulasi dan tolak kalau ada paket dari repo non-Ubuntu/Docker atau yang memiliki file di `/boot`. Setelah itu potret md5 `/boot`, upgrade dengan `--force-confdef --force-confold` (disarankan di dalam `screen`), bandingkan `/boot`, dan cek `apt-mark showhold` serta layanan `ssh`/`NetworkManager`/`docker`.
+- **Rencana `scripts/update.sh` (dibuat di poin 6):** cek internet, lalu `apt-get update`, lalu simulasi dan tolak kalau ada paket dari repo non-Ubuntu/Docker atau yang memiliki file di `/boot`. Setelah itu potret md5 `/boot`, upgrade dengan `--force-confdef --force-confold` (disarankan di dalam `screen`), bandingkan `/boot`, dan cek `apt-mark showhold` serta layanan `ssh`/`NetworkManager`/`docker`. Terakhir, jalankan `apt-get clean`.
+
+## 2026-09-28: Poin 2 susulan, `apt-get clean`
+
+- **Apa:** `apt-get clean` (disetujui klien). Cache `/var/cache/apt/archives` turun dari 349 MB ke 28 KB, root `/` kembali ke 47% (sisa 3,1 GB).
+- **Kenapa:** eMMC kecil, dan file installer bekas tidak diperlukan lagi. Langkah ini ditambahkan ke rencana `scripts/update.sh`.
+
+## 2026-09-28: Fase 0 poin 3, zona waktu
+
+- **Apa:** `timedatectl set-timezone Asia/Jakarta`. `/etc/localtime` sekarang menunjuk ke `/usr/share/zoneinfo/Asia/Jakarta`. Jam sistem tetap sinkron, dan RTC tetap UTC.
+- **Kenapa:** supaya jam di log dan jadwal sesuai WIB.
